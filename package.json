@@ -52,7 +52,7 @@
 		"lucide-react": "^1.14.0",
 		"motion": "^12.38.0",
 		"next": "16.2.6",
-		"next-auth": "^5.0.0-beta.30",
+		"next-auth": "^5.0.0-beta.32",
 		"openid-client": "^6.8.4",
 		"pg": "^8.20.0",
 		"prisma": "^7.8.0",
