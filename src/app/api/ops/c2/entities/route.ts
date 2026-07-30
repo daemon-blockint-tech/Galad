@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { getOpsUserId } from '@/lib/ops/session';
 
 /**
  * Shape stored (as JSON) in `Alert.enrichedContext` by the C2 interface.
@@ -35,6 +36,11 @@ function parseEntityContext(raw: string): EntityContext {
  * - limit: max results (default 100)
  */
 export async function GET(request: NextRequest) {
+  const userId = await getOpsUserId();
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get('search') || '';
@@ -111,6 +117,11 @@ export async function GET(request: NextRequest) {
  * Create new entity.
  */
 export async function POST(request: NextRequest) {
+  const userId = await getOpsUserId();
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
     const { name, entityId, platformType, ontology, capabilities } = body;
@@ -164,6 +175,11 @@ export async function POST(request: NextRequest) {
  * Delete entities by ID.
  */
 export async function DELETE(request: NextRequest) {
+  const userId = await getOpsUserId();
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
     const { entityIds } = body;

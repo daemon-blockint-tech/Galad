@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { C2CommandExecutor } from '@/core/c2/C2CommandExecutor';
+import { getOpsUserId } from '@/lib/ops/session';
 
 const commandExecutor = new C2CommandExecutor(prisma);
 
@@ -16,6 +17,11 @@ const commandExecutor = new C2CommandExecutor(prisma);
  * }
  */
 export async function POST(request: NextRequest) {
+  const userId = await getOpsUserId();
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
     const { commandId, entityId, parameters } = body;
@@ -31,6 +37,7 @@ export async function POST(request: NextRequest) {
       commandId,
       entityId,
       parameters,
+      executedBy: userId,
       timestamp: Date.now(),
     });
 
@@ -47,6 +54,7 @@ export async function POST(request: NextRequest) {
             status: result.status,
             duration: result.duration,
           }),
+          actorUserId: userId,
           actorAction: `Executed command: ${commandId}`,
           actorNotes: `Command result: ${result.status}`,
         },
@@ -79,6 +87,11 @@ export async function POST(request: NextRequest) {
  * - limit: max results (default 50)
  */
 export async function GET(request: NextRequest) {
+  const userId = await getOpsUserId();
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const entityId = searchParams.get('entityId') || undefined;

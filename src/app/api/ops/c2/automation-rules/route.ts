@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { PlaybookEngine } from '@/core/c2/PlaybookEngine';
 import { C2CommandExecutor } from '@/core/c2/C2CommandExecutor';
 import { prisma } from '@/lib/db';
+import { getOpsUserId } from '@/lib/ops/session';
 
 const commandExecutor = new C2CommandExecutor(prisma);
 const playbookEngine = new PlaybookEngine(prisma, commandExecutor);
@@ -11,6 +12,11 @@ const playbookEngine = new PlaybookEngine(prisma, commandExecutor);
  * List automation rules.
  */
 export async function GET(request: NextRequest) {
+  const userId = await getOpsUserId();
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const rules = playbookEngine.listAutomationRules();
 
@@ -54,6 +60,11 @@ export async function GET(request: NextRequest) {
  * }
  */
 export async function POST(request: NextRequest) {
+  const userId = await getOpsUserId();
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
     const { id, name, description, trigger, action, scope, enabled } = body;
@@ -93,6 +104,11 @@ export async function POST(request: NextRequest) {
  * - id: Rule ID to delete
  */
 export async function DELETE(request: NextRequest) {
+  const userId = await getOpsUserId();
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const ruleId = searchParams.get('id');

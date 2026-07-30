@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { CorrelationQueryEngine } from '@/core/query/CorrelationQueryEngine';
+import { getOpsUserId } from '@/lib/ops/session';
 
 const correlationEngine = new CorrelationQueryEngine(prisma);
 
@@ -18,6 +19,11 @@ const correlationEngine = new CorrelationQueryEngine(prisma);
  * }
  */
 export async function POST(request: NextRequest) {
+  const userId = await getOpsUserId();
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
     const { type, entityIds, timeWindow, spatialRadius, threshold } = body;
@@ -71,6 +77,11 @@ export async function POST(request: NextRequest) {
  * - threshold: correlation threshold (0-1)
  */
 export async function GET(request: NextRequest) {
+  const userId = await getOpsUserId();
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const entityIdsParam = searchParams.get('entityIds');

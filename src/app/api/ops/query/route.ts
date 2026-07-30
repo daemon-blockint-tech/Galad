@@ -7,6 +7,7 @@ import { FullTextSearchIndex } from '@/core/search/FullTextSearchIndex';
 import { CorrelationQueryEngine } from '@/core/query/CorrelationQueryEngine';
 import { AnomalyDetectionEngine } from '@/core/ml/AnomalyDetectionEngine';
 import { SemanticStore } from '@/core/semantic/semanticStore';
+import { getOpsUserId } from '@/lib/ops/session';
 
 const semanticStore = new SemanticStore();
 const anomalyEngine = new AnomalyDetectionEngine(semanticStore);
@@ -27,6 +28,11 @@ const llmInterpreter = new LLMQueryInterpreter(
  * Execute natural language query and get structured results.
  */
 export async function POST(request: NextRequest) {
+  const userId = await getOpsUserId();
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
     const { naturalLanguage, context } = body;
@@ -61,6 +67,11 @@ export async function POST(request: NextRequest) {
  * Get example query suggestions.
  */
 export async function GET() {
+  const userId = await getOpsUserId();
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const suggestions = await llmInterpreter.getSuggestions();
 
