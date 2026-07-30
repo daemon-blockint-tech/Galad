@@ -67,12 +67,18 @@ describe('Alert System Integration (Phase 5a-5b)', () => {
         longitude: -74.006,
       })),
       getClassification: vi.fn(() => ({
-        type: 'ip-address',
-        disposition: 'suspicious',
+        entityPluginId: 'plugin-1',
+        entityId: 'entity-1',
+        type: 'network_node' as const,
+        domain: 'cyber' as const,
+        disposition: 'hostile' as const,
+        confidence: 0.9,
+        classifiedAt: Date.now(),
       })),
       getThreatAssessment: vi.fn(() => ({
         threatLevel: 'high',
         hostilityScore: 0.8,
+        proximityScore: 0.5,
       })),
       getRelationshipsFrom: vi.fn(() => []),
     };

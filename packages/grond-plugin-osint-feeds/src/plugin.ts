@@ -4,7 +4,7 @@
  * Demonstrates multi-source streaming integration for Phase 4c.
  */
 
-import type { WorldPlugin, GeoEntity, PluginContext, LayerConfig } from '@grond/plugin-sdk';
+import type { WorldPlugin, GeoEntity, PluginContext, LayerConfig, CesiumEntityOptions, PluginCategory } from '@grond/plugin-sdk';
 
 interface Feed {
   url: string;
@@ -26,6 +26,10 @@ interface FeedItem {
 export class OSINTFeedsPlugin implements WorldPlugin {
   id = 'osint-feeds';
   name = 'OSINT Feeds';
+  description = 'Aggregates OSINT RSS alerts and reports into geolocated events.';
+  icon = 'Rss';
+  category: PluginCategory = 'intelligence';
+  version = '1.0.0';
   private context?: PluginContext;
   private feeds: Feed[] = [];
   private lastFetchTime = 0;
@@ -126,7 +130,7 @@ export class OSINTFeedsPlugin implements WorldPlugin {
       latitude: item.geo.lat,
       longitude: item.geo.lon,
       label: item.title,
-      timestamp: new Date(item.pubDate ?? Date.now()).getTime(),
+      timestamp: new Date(item.pubDate ?? Date.now()),
       properties: {
         type: 'flood_alert',
         severity: item.severity ?? 'unknown',
@@ -146,7 +150,7 @@ export class OSINTFeedsPlugin implements WorldPlugin {
       latitude: item.geo.lat,
       longitude: item.geo.lon,
       label: item.title,
-      timestamp: new Date(item.pubDate ?? Date.now()).getTime(),
+      timestamp: new Date(item.pubDate ?? Date.now()),
       properties: {
         type: 'conflict_event',
         severity: item.severity ?? 'unknown',
@@ -166,7 +170,7 @@ export class OSINTFeedsPlugin implements WorldPlugin {
       latitude: item.geo.lat,
       longitude: item.geo.lon,
       label: item.title,
-      timestamp: new Date(item.pubDate ?? Date.now()).getTime(),
+      timestamp: new Date(item.pubDate ?? Date.now()),
       properties: {
         type: 'infrastructure_event',
         severity: item.severity ?? 'unknown',
@@ -184,18 +188,28 @@ export class OSINTFeedsPlugin implements WorldPlugin {
 
   getLayerConfig(): LayerConfig {
     return {
-      name: 'OSINT Feeds',
       color: '#f59e0b',
-      clustering: true,
-      clustering_config: {
-        min_level: 0,
-        max_objects: 5,
-      },
+      clusterEnabled: true,
+      clusterDistance: 40,
     };
   }
 
-  onContextReady(context: PluginContext): void {
+  renderEntity(entity: GeoEntity): CesiumEntityOptions {
+    return {
+      type: 'point',
+      color: '#f59e0b',
+      size: 8,
+      outlineColor: '#ffffff',
+      outlineWidth: 1,
+    };
+  }
+
+  async initialize(context: PluginContext): Promise<void> {
     this.context = context;
+  }
+
+  destroy(): void {
+    this.context = undefined;
   }
 
   mapWebsocketPayload(payload: any): GeoEntity[] {

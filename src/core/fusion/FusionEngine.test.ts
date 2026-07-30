@@ -4,6 +4,24 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+vi.mock('@/lib/db', () => ({
+  prisma: {
+    entityFusion: {
+      create: vi.fn().mockResolvedValue({ id: 'fusion-1' }),
+    },
+    fusionEvent: {
+      create: vi.fn().mockResolvedValue({}),
+    },
+    entityProvenance: {
+      upsert: vi.fn().mockResolvedValue({}),
+      findFirst: vi.fn().mockResolvedValue(null),
+      update: vi.fn().mockResolvedValue({}),
+      create: vi.fn().mockResolvedValue({}),
+    },
+  },
+}));
+
 import { FusionEngine } from './FusionEngine';
 import { SemanticStore } from '@/core/semantic/semanticStore';
 import {
@@ -280,21 +298,6 @@ describe('FusionEngine', () => {
         metadata: {},
         strategyBreakdown: [],
       };
-
-      // Mock prisma
-      vi.mock('@/lib/db', () => ({
-        prisma: {
-          entityFusion: {
-            create: vi.fn().mockResolvedValue({ id: 'fusion-1' }),
-          },
-          fusionEvent: {
-            create: vi.fn().mockResolvedValue({}),
-          },
-          entityProvenance: {
-            upsert: vi.fn().mockResolvedValue({}),
-          },
-        },
-      }));
 
       const fusionId = await engine.acceptFusion(proposal, 'user-123', 'Valid fusion');
 

@@ -60,7 +60,7 @@ const DOMAIN_MULTIPLIERS: Record<EntityDomain, number> = {
  * Threat inference engine: rules-based threat scoring.
  */
 export class ThreatInferenceEngine {
-  private store: SemanticStore;
+  protected store: SemanticStore;
 
   constructor(store: SemanticStore) {
     this.store = store;
@@ -148,7 +148,7 @@ export class ThreatInferenceEngine {
       const [targetPId, targetEId] = rel.targetId.split(':');
       const targetCls = this.store.getClassification(targetPId, targetEId);
 
-      if (targetCls?.disposition === 'hostile' || targetCls?.domain === 'weapon_system') {
+      if (targetCls?.disposition === 'hostile' || targetCls?.type === 'weapon_system') {
         relatedThreats.push({
           entityId: targetEId,
           relationshipType: rel.relationshipType,
@@ -273,7 +273,7 @@ export class ThreatInferenceEngine {
     const recommendations = threats
       .filter((t) => t.threatLevel !== 'low')
       .sort((a, b) => {
-        const levelScore = { critical: 0, high: 1, medium: 2 };
+        const levelScore = { critical: 0, high: 1, medium: 2, low: 3 };
         return (levelScore[a.threatLevel] ?? 3) - (levelScore[b.threatLevel] ?? 3);
       })
       .map((threat) => {

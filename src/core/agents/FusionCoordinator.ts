@@ -93,7 +93,10 @@ export class FusionCoordinator {
 
     // Step 4: Synthesize decisions with anomaly context
     return results.map((result) => {
-      const anomaly = anomalies.find((a) => a.fusionId === fusion.id);
+      // Anomaly fusionIds are entity ids ("pluginId|entityId") — see detectAnomalies.
+      const anomaly = anomalies.find(
+        (a) => a.fusionId === result.fusion.id1 || a.fusionId === result.fusion.id2,
+      );
       if (anomaly && anomaly.severity !== 'none') {
         result.isValid = false;
         result.risks.push(`Anomaly detected: ${anomaly.description}`);

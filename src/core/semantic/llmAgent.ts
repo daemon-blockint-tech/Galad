@@ -231,7 +231,12 @@ Hypothesis: ${this.context.getTopHypothesis()?.hypothesis || 'Unknown'}
           action: 'alert_created',
           alert: {
             id: `alert-${Date.now()}`,
-            severity: threat.threatLevel as any,
+            severity:
+              threat.threatLevel === 'critical'
+                ? 'critical'
+                : threat.threatLevel === 'high'
+                  ? 'warn'
+                  : 'info',
             title: `LLM Analysis: ${threat.entityId}`,
             body: `LLM recommended immediate notification`,
             source: 'llm-agent',
@@ -246,7 +251,6 @@ Hypothesis: ${this.context.getTopHypothesis()?.hypothesis || 'Unknown'}
         action: {
           action: 'highlight_layer',
           pluginId,
-          enabled: true,
         },
       };
     } else {
@@ -257,20 +261,6 @@ Hypothesis: ${this.context.getTopHypothesis()?.hypothesis || 'Unknown'}
         },
       };
     }
-  }
-
-  /**
-   * Base method for consistency with parent class.
-   */
-  private buildAction(
-    entityId: string,
-    priority: 'low' | 'medium' | 'high' | 'critical',
-  ): { action: AgentAction } {
-    // Same as parent
-    return this.buildLLMAction('alert', {
-      entityId,
-      threatLevel: priority,
-    });
   }
 
   /**

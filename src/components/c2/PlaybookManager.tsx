@@ -54,7 +54,7 @@ export function PlaybookManager({ entityId, entityName, onPlaybookExecute }: Pla
       actions: [
         { id: 'act-1', type: 'command', commandId: 'isolate' },
         { id: 'act-2', type: 'delay', delayMs: 5000 },
-        { id: 'act-3', type: 'command', commandId: 'collect', commandId: 'collect' },
+        { id: 'act-3', type: 'command', commandId: 'collect' },
       ],
       enabled: true,
     },

@@ -4,7 +4,7 @@
  * Supports queries like "entities with behavior changes in last 24h".
  */
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@/generated/prisma';
 import { AnomalyDetectionEngine } from '@/core/ml/AnomalyDetectionEngine';
 import { SemanticStore } from '@/core/semantic/semanticStore';
 

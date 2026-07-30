@@ -4,7 +4,7 @@
  * Identifies shared threat patterns, temporal alignment, and spatial proximity.
  */
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@/generated/prisma';
 
 export interface CorrelationQuery {
   type: 'threat_correlation' | 'temporal_alignment' | 'spatial_proximity' | 'entity_fusion';
@@ -376,19 +376,22 @@ export class CorrelationQueryEngine {
         orderBy: { createdAt: 'desc' },
         take: 100,
       }),
-      this.db.entityBehavior.findMany({
+      // No dedicated behavior model exists; anomaly-type alerts are the
+      // behavior signal (same source PredictiveQueryEngine forecasts from).
+      this.db.alert.findMany({
         where: {
           tenantId: this.tenantId,
           entityId,
-          timestamp: {
+          type: 'anomaly',
+          createdAt: {
             gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // Last 7 days
           },
         },
         select: {
-          timestamp: true,
-          anomalyScore: true,
+          createdAt: true,
+          escalationLevel: true,
         },
-        orderBy: { timestamp: 'desc' },
+        orderBy: { createdAt: 'desc' },
         take: 50,
       }),
     ]);
@@ -407,9 +410,9 @@ export class CorrelationQueryEngine {
       })),
       lastLocation: undefined, // Placeholder for location data
       behaviors: behaviors.map((b) => ({
-        timestamp: b.timestamp.getTime(),
+        timestamp: b.createdAt.getTime(),
         type: 'anomaly',
-        value: b.anomalyScore || 0,
+        value: b.escalationLevel,
       })),
     };
   }

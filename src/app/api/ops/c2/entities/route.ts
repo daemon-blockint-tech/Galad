@@ -1,7 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/db';
 
-const db = new PrismaClient();
+/**
+ * Shape stored (as JSON) in `Alert.enrichedContext` by the C2 interface.
+ */
+type EntityContext = {
+  provenance?: string;
+  ontology?: string;
+  capabilities?: string[];
+  platformType?: string;
+};
+
+/** `Alert.enrichedContext` is a JSON string column — parse defensively. */
+function parseEntityContext(raw: string): EntityContext {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return parsed !== null && typeof parsed === 'object' ? (parsed as EntityContext) : {};
+  } catch {
+    return {};
+  }
+}
 
 /**
  * GET /api/ops/c2/entities
@@ -26,7 +44,7 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get('limit') || '100'), 500);
 
     // Fetch alerts to build entity view
-    const alerts = await db.alert.findMany({
+    const alerts = await prisma.alert.findMany({
       where: {
         AND: [
           search ? {
@@ -54,18 +72,18 @@ export async function GET(request: NextRequest) {
 
     for (const alert of alerts) {
       if (!entityMap.has(alert.entityId)) {
-        const context = alert.enrichedContext as any || {};
+        const context = parseEntityContext(alert.enrichedContext);
 
         entityMap.set(alert.entityId, {
           id: alert.entityId,
           name: alert.title || alert.entityId,
           entityId: alert.entityId,
-          status: this.mapSeverityToStatus(alert.severity),
+          status: mapSeverityToStatus(alert.severity),
           provenance: context.provenance || 'system',
           ontology: context.ontology || 'UNKNOWN',
           capabilities: context.capabilities || [],
           platformType: context.platformType || 'UNKNOWN',
-          threatLevel: this.mapSeverityToThreatLevel(alert.severity),
+          threatLevel: mapSeverityToThreatLevel(alert.severity),
           lastUpdated: alert.createdAt.getTime(),
           checks: 0,
         });
@@ -105,7 +123,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create as alert for now (would be entity table in production)
-    const alert = await db.alert.create({
+    const alert = await prisma.alert.create({
       data: {
         title: name,
         entityId,
@@ -113,11 +131,14 @@ export async function POST(request: NextRequest) {
         type: 'system',
         sourcePluginId: 'c2',
         description: `Created via C2 interface: ${name}`,
-        enrichedContext: {
+        // sourceAlertIds / routes / enrichedContext are JSON string columns.
+        sourceAlertIds: JSON.stringify([]),
+        routes: JSON.stringify([]),
+        enrichedContext: JSON.stringify({
           platformType,
           ontology,
           capabilities,
-        },
+        }),
       },
     });
 
@@ -155,7 +176,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Mark alerts as resolved (soft delete)
-    const updated = await db.alert.updateMany({
+    const updated = await prisma.alert.updateMany({
       where: {
         entityId: { in: entityIds },
       },
@@ -177,13 +198,13 @@ export async function DELETE(request: NextRequest) {
 
 // Helper functions
 function mapSeverityToStatus(severity: string): 'online' | 'offline' | 'error' | 'unknown' | 'live' | 'degraded' {
-  const map: Record<string, any> = {
-    critical: 'error',
-    high: 'degraded',
-    medium: 'online',
-    low: 'live',
-  };
-  return map[severity] || 'unknown';
+  switch (severity) {
+    case 'critical': return 'error';
+    case 'high': return 'degraded';
+    case 'medium': return 'online';
+    case 'low': return 'live';
+    default: return 'unknown';
+  }
 }
 
 function mapSeverityToThreatLevel(severity: string): number {

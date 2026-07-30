@@ -3,7 +3,7 @@
  * @description Full-text search engine using PostgreSQL capabilities.
  */
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@/generated/prisma';
 
 export interface FullTextSearchResult {
   type: 'entity' | 'alert' | 'relationship';

@@ -42,7 +42,7 @@ export class AlertChannelWebhook {
           method: 'POST',
           headers: this.headers,
           body: JSON.stringify(payload),
-          timeout: 10000, // 10 second timeout
+          signal: AbortSignal.timeout(10000), // 10 second timeout
         });
 
         if (response.ok) {
@@ -133,7 +133,7 @@ export class AlertChannelWebhook {
           type: 'test',
           message: 'Grond-Eye webhook verification',
         }),
-        timeout: 5000,
+        signal: AbortSignal.timeout(5000),
       });
 
       return response.ok || response.status === 201 || response.status === 202;

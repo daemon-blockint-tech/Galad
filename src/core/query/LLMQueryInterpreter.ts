@@ -4,10 +4,10 @@
  * Converts natural language questions to structured query engine calls.
  */
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@/generated/prisma';
 import { TemporalQueryEngine, TemporalQuery } from './TemporalQueryEngine';
 import { PredictiveQueryEngine, PredictiveQuery } from './PredictiveQueryEngine';
-import { FullTextSearchIndex } from './FullTextSearchIndex';
+import { FullTextSearchIndex } from '@/core/search/FullTextSearchIndex';
 import { CorrelationQueryEngine, CorrelationQuery } from './CorrelationQueryEngine';
 
 export interface LLMQuery {

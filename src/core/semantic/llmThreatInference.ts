@@ -5,7 +5,6 @@
  */
 
 import { ThreatInferenceEngine } from './threatInference';
-import { SemanticStore } from './semanticStore';
 import { getOpenRouterClient } from '@/lib/openrouter/openrouterClient';
 import type { ThreatIntelligence } from './agentContext';
 
@@ -13,13 +12,7 @@ import type { ThreatIntelligence } from './agentContext';
  * LLM-enhanced threat inference combining rules + LLM reasoning.
  */
 export class LLMThreatInferenceEngine extends ThreatInferenceEngine {
-  private store: SemanticStore;
   private llmClient = getOpenRouterClient();
-
-  constructor(store: SemanticStore) {
-    super(store);
-    this.store = store;
-  }
 
   /**
    * Enhanced threat inference: rules + LLM reasoning.

@@ -6,7 +6,7 @@
 import { Job } from 'bullmq';
 import { AlertRouter } from '@/core/alerts/AlertRouter';
 import { AlertChannelManager, getAlertChannelManager } from '@/core/alerts/AlertChannelManager';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@/generated/prisma';
 
 export interface AlertRoutingJobData {
   alertId: string;

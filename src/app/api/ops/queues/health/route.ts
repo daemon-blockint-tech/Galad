@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getQueueManager } from '@/lib/queue/queueInitializer';
+import { getQueueManager } from '@/core/queue/QueueManager';
 import { getOpsUserId } from '@/lib/ops/session';
 
 /**

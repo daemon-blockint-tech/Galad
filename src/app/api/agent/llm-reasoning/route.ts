@@ -9,6 +9,7 @@
 
 import { NextResponse, type NextRequest } from 'next/server';
 import { auth } from '@/lib/auth';
+import { getTenantId } from '@/lib/ops/session';
 import { getGlobalSemanticStore } from '@/core/semantic';
 import { getAgentContext } from '@/core/semantic/agentContext';
 import { LLMSemanticAgent } from '@/core/semantic/llmAgent';
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
   }
 
   const userId = session.user.id;
-  const tenantId = session.user.tenantId ?? null;
+  const tenantId = await getTenantId();
 
   let body: unknown;
   try {
@@ -126,7 +127,7 @@ export async function GET() {
   }
 
   const userId = session.user.id;
-  const tenantId = session.user.tenantId ?? null;
+  const tenantId = await getTenantId();
 
   try {
     const store = getGlobalSemanticStore(tenantId);

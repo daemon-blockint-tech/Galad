@@ -5,18 +5,25 @@ import { getOpsUserId, getTenantId } from '@/lib/ops/session';
 /**
  * PATCH /api/ops/alerts/[id]/resolve — resolve an alert.
  */
-export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const userId = await getOpsUserId();
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const tenantId = await getTenantId();
-  const alertId = params.id;
+  const { id: alertId } = await params;
 
   try {
     const body = await request.json().catch(() => ({}));
     const notes = typeof body.notes === 'string' ? body.notes : undefined;
+
+    if (!(await prisma.alert.findUnique({ where: { id: alertId } }))) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
 
     const alert = await prisma.alert.update({
       where: { id: alertId },

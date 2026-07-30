@@ -22,17 +22,26 @@ function createMockDb() {
         alerts.set(data.id, { ...data });
         return { ...alerts.get(data.id) };
       }),
-      findMany: vi.fn(async ({ where = {} }: any = {}) =>
-        Array.from(alerts.values())
+      findMany: vi.fn(async ({ where = {} }: any = {}) => {
+        const matchesClause = (a: any, clause: any) => {
+          if (clause.status !== undefined && a.status !== clause.status) return false;
+          if (clause.suppressedUntil?.lte && !(a.suppressedUntil <= clause.suppressedUntil.lte)) {
+            return false;
+          }
+          return true;
+        };
+
+        return Array.from(alerts.values())
           .filter((a) => {
             if (where.tenantId !== undefined && a.tenantId !== where.tenantId) return false;
             if (where.status !== undefined && a.status !== where.status) return false;
             if (where.severity !== undefined && a.severity !== where.severity) return false;
             if (where.lastSeen?.gte && a.lastSeen < where.lastSeen.gte) return false;
+            if (where.OR && !where.OR.some((clause: any) => matchesClause(a, clause))) return false;
             return true;
           })
-          .map((a) => ({ ...a })),
-      ),
+          .map((a) => ({ ...a }));
+      }),
       findUnique: vi.fn(async ({ where }: any) => (alerts.has(where.id) ? { ...alerts.get(where.id) } : null)),
       update: vi.fn(async ({ where, data }: any) => {
         const existing = alerts.get(where.id);
@@ -55,15 +64,28 @@ describe('AlertOrchestrator', () => {
   beforeEach(() => {
     mockStore = {
       getClassification: vi.fn(() => ({
-        type: 'ip-address',
-        disposition: 'suspicious',
+        entityPluginId: 'plugin-1',
+        entityId: 'entity-1',
+        type: 'network_node' as const,
+        domain: 'cyber' as const,
+        disposition: 'hostile' as const,
+        confidence: 0.9,
+        classifiedAt: Date.now(),
       })),
       getThreatAssessment: vi.fn(() => ({
         threatLevel: 'high',
         hostilityScore: 0.8,
+        proximityScore: 0.5,
       })),
       getRelationshipsFrom: vi.fn(() => [
-        { targetId: 'entity-2', type: 'communicates-with' },
+        {
+          id: 'rel-1',
+          sourceId: 'plugin-1:entity-1',
+          targetId: 'entity-2',
+          relationshipType: 'communicates_with' as const,
+          confidence: 0.9,
+          establishedAt: Date.now(),
+        },
       ]),
       getEntity: vi.fn((plugin: string, id: string) => ({
         id: `${plugin}|${id}`,
@@ -159,8 +181,8 @@ describe('AlertOrchestrator', () => {
 
       const alert = await orchestrator.ingestAlert(input);
 
-      expect(alert.enrichedContext.entityType).toBe('ip-address');
-      expect(alert.enrichedContext.disposition).toBe('suspicious');
+      expect(alert.enrichedContext.entityType).toBe('network_node');
+      expect(alert.enrichedContext.disposition).toBe('hostile');
       expect(alert.enrichedContext.threatLevel).toBe('high');
       expect(alert.enrichedContext.relatedEntities).toContain('entity-2');
     });

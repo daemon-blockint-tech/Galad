@@ -92,7 +92,7 @@ export function C2Dashboard() {
     return Array.from(groups.entries()).map(([type, items]) => ({
       id: type,
       label: type,
-      status: items.some((e) => e.status === 'error') ? 'error' : 'online' as const,
+      status: items.some((e) => e.status === 'error') ? ('error' as const) : ('online' as const),
       type: 'group',
       metadata: {
         platformType: type,

@@ -119,8 +119,9 @@ async function globalSetup(config: FullConfig) {
     await page.fill('input[name="password"]', password);
     await page.click('button[type="submit"]');
 
-    // Wait for redirect to home
-    await page.waitForURL(baseURL);
+    // Login lands on /ops (see getSafeRedirect in src/app/(auth)/login/page.tsx),
+    // and `/` server-redirects there too — so never settles on baseURL itself.
+    await page.waitForURL(`${baseURL}/ops`);
 
     // 5. Save storage state
     if (typeof storageState === 'string') {

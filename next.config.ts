@@ -2,7 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  serverExternalPackages: ["@prisma/client", "prisma", "@google/earthengine"],
+  // bullmq/ioredis are server-only and bullmq lazily requires optional Redis
+  // clients (@valkey/valkey-glide) that webpack cannot resolve when bundling.
+  serverExternalPackages: ["@prisma/client", "prisma", "@google/earthengine", "bullmq", "ioredis"],
   transpilePackages: ["@grond/plugin-sdk", "@maven-system/plugin-sdk", "resium", "react-player", "satellite.js"],
   allowedDevOrigins: process.env.ALLOWED_DEV_ORIGIN ? [process.env.ALLOWED_DEV_ORIGIN] : undefined,
   experimental: {
@@ -14,9 +16,7 @@ const nextConfig: NextConfig = {
     "/*": ["./scripts/**/*"],
   },
   typescript: {
-    // Flip to false once `npx tsc --noEmit` is clean. It reports 166 errors in
-    // the C2/semantic/queue modules, which were merged while this was on.
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   async headers() {
     return [

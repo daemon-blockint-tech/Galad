@@ -4,7 +4,7 @@
  * Enriches entities with threat context and indicators of compromise.
  */
 
-import type { WorldPlugin, GeoEntity, PluginContext, LayerConfig } from '@grond/plugin-sdk';
+import type { WorldPlugin, GeoEntity, PluginContext, LayerConfig, CesiumEntityOptions, PluginCategory } from '@grond/plugin-sdk';
 
 interface ThreatIntelligence {
   id: string;
@@ -22,6 +22,10 @@ interface ThreatIntelligence {
 export class ThreatIntelPlugin implements WorldPlugin {
   id = 'threat-intel';
   name = 'Threat Intelligence';
+  description = 'Threat intelligence feeds - enriches entities with threat context and IOCs.';
+  icon = 'ShieldAlert';
+  category: PluginCategory = 'cyber';
+  version = '1.0.0';
   private context?: PluginContext;
   private threatCache: Map<string, ThreatIntelligence> = new Map();
   private lastUpdateTime = 0;
@@ -52,7 +56,7 @@ export class ThreatIntelPlugin implements WorldPlugin {
             latitude: threat.location.lat,
             longitude: threat.location.lon,
             label: threat.name,
-            timestamp: threat.reportedAt.getTime(),
+            timestamp: threat.reportedAt,
             properties: {
               threatType: threat.threatType,
               severity: threat.severity,
@@ -136,7 +140,7 @@ export class ThreatIntelPlugin implements WorldPlugin {
           latitude: threat.location.lat,
           longitude: threat.location.lon,
           label: threat.name,
-          timestamp: threat.reportedAt.getTime(),
+          timestamp: threat.reportedAt,
           properties: {
             threatType: threat.threatType,
             severity: threat.severity,
@@ -157,25 +161,35 @@ export class ThreatIntelPlugin implements WorldPlugin {
 
   getLayerConfig(): LayerConfig {
     return {
-      name: 'Threat Intelligence',
       color: '#ef4444',
-      clustering: true,
-      clustering_config: {
-        min_level: 0,
-        max_objects: 3,
-      },
+      clusterEnabled: true,
+      clusterDistance: 40,
     };
   }
 
-  onContextReady(context: PluginContext): void {
+  renderEntity(entity: GeoEntity): CesiumEntityOptions {
+    return {
+      type: 'point',
+      color: '#ef4444',
+      size: 8,
+      outlineColor: '#ffffff',
+      outlineWidth: 1,
+    };
+  }
+
+  async initialize(context: PluginContext): Promise<void> {
     this.context = context;
+  }
+
+  destroy(): void {
+    this.context = undefined;
   }
 
   mapWebsocketPayload(payload: any): GeoEntity[] {
     // Handle real-time threat feed updates
     if (Array.isArray(payload)) {
       return payload
-        .map((threat: any) => {
+        .map((threat: any): GeoEntity | null => {
           if (threat.location) {
             return {
               id: threat.id,
@@ -183,7 +197,7 @@ export class ThreatIntelPlugin implements WorldPlugin {
               latitude: threat.location.lat,
               longitude: threat.location.lon,
               label: threat.name,
-              timestamp: new Date(threat.reportedAt).getTime(),
+              timestamp: new Date(threat.reportedAt),
               properties: {
                 threatType: threat.threatType,
                 severity: threat.severity,

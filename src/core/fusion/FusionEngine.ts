@@ -210,29 +210,48 @@ export class FusionEngine {
     this.mergeEntities(canonicalPluginId, canonicalEntityId, absorbedPluginId, absorbedEntityId);
 
     // Update provenance
-    await prisma.entityProvenance.upsert({
-      where: {
-        tenantId_entityPluginId_entityId: {
-          tenantId: this.tenantId,
+    const provenanceCreate = {
+      tenantId: this.tenantId,
+      entityPluginId: canonicalPluginId,
+      entityId: canonicalEntityId,
+      sourcePluginId: canonicalPluginId,
+      sourceTimestamp: new Date(),
+      fusedFromPluginIds: JSON.stringify([absorbedPluginId]),
+      fusedFromEntityIds: JSON.stringify([absorbedEntityId]),
+    };
+    const provenanceUpdate = {
+      fusedFromPluginIds: JSON.stringify([absorbedPluginId]),
+      fusedFromEntityIds: JSON.stringify([absorbedEntityId]),
+      updatedAt: new Date(),
+    };
+
+    if (this.tenantId) {
+      await prisma.entityProvenance.upsert({
+        where: {
+          tenantId_entityPluginId_entityId: {
+            tenantId: this.tenantId,
+            entityPluginId: canonicalPluginId,
+            entityId: canonicalEntityId,
+          },
+        },
+        create: provenanceCreate,
+        update: provenanceUpdate,
+      });
+    } else {
+      // A NULL tenantId can never match the compound unique key, so emulate upsert
+      const existing = await prisma.entityProvenance.findFirst({
+        where: {
+          tenantId: null,
           entityPluginId: canonicalPluginId,
           entityId: canonicalEntityId,
         },
-      },
-      create: {
-        tenantId: this.tenantId,
-        entityPluginId: canonicalPluginId,
-        entityId: canonicalEntityId,
-        sourcePluginId: canonicalPluginId,
-        sourceTimestamp: new Date(),
-        fusedFromPluginIds: JSON.stringify([absorbedPluginId]),
-        fusedFromEntityIds: JSON.stringify([absorbedEntityId]),
-      },
-      update: {
-        fusedFromPluginIds: JSON.stringify([absorbedPluginId]),
-        fusedFromEntityIds: JSON.stringify([absorbedEntityId]),
-        updatedAt: new Date(),
-      },
-    });
+      });
+      if (existing) {
+        await prisma.entityProvenance.update({ where: { id: existing.id }, data: provenanceUpdate });
+      } else {
+        await prisma.entityProvenance.create({ data: provenanceCreate });
+      }
+    }
 
     return fusion.id;
   }
@@ -299,11 +318,13 @@ export class FusionEngine {
     // Copy relationships from absorbed to canonical
     const relationships = this.store.getRelationshipsFrom(absorbedPluginId, absorbedEntityId);
     for (const rel of relationships) {
+      // targetId is stored as "<pluginId>:<entityId>"; split at the first colon
+      const sep = rel.targetId.indexOf(':');
       this.store.addRelationship(
         canonicalPluginId,
         canonicalEntityId,
-        rel.targetPluginId,
-        rel.targetEntityId,
+        rel.targetId.slice(0, sep),
+        rel.targetId.slice(sep + 1),
         rel.relationshipType,
         Math.min(rel.confidence, 0.95), // Reduce confidence slightly for merged relationships
       );

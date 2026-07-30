@@ -4,7 +4,7 @@
  * Uses simple linear regression and trend extrapolation.
  */
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@/generated/prisma';
 import { AnomalyDetectionEngine } from '@/core/ml/AnomalyDetectionEngine';
 
 export interface PredictiveQuery {

@@ -1,5 +1,3 @@
-import { AlertEvent } from '@prisma/client';
-
 export interface SensorData {
   timestamp: number;
   sourceId: string;

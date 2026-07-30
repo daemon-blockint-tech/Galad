@@ -12,6 +12,7 @@ export default defineConfig({
             '@maven-system/plugin-sdk': path.resolve(__dirname, './packages/grond-plugin-sdk/src'),
         },
         include: [
+            'src/*.{test,spec}.{js,ts,jsx,tsx}',
             'src/lib/**/*.{test,spec}.{js,ts,jsx,tsx}',
             'src/core/**/*.{test,spec}.{js,ts,jsx,tsx}',
             'src/plugins/**/*.{test,spec}.{js,ts,jsx,tsx}',

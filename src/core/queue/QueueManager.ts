@@ -123,7 +123,7 @@ export class QueueManager {
     });
 
     worker.on('failed', (job, error) => {
-      console.error(`Job ${job.id} in queue ${queueName} failed:`, error);
+      console.error(`Job ${job?.id} in queue ${queueName} failed:`, error);
     });
 
     this.workers.set(queueName, worker);
@@ -164,13 +164,13 @@ export class QueueManager {
   async getQueueStats(queueName?: QueueName | string): Promise<QueueStats | QueueStats[]> {
     if (queueName) {
       const queue = this.getQueue(queueName);
-      const [waiting, active, completed, failed, delayed, paused] = await Promise.all([
+      const [waiting, active, completed, failed, delayed, isPaused] = await Promise.all([
         queue.getWaitingCount(),
         queue.getActiveCount(),
         queue.getCompletedCount(),
         queue.getFailedCount(),
         queue.getDelayedCount(),
-        queue.getPausedCount(),
+        queue.isPaused(),
       ]);
 
       return {
@@ -180,7 +180,8 @@ export class QueueManager {
         completed,
         failed,
         delayed,
-        paused,
+        // BullMQ v5 has no separate paused list; waiting jobs are held while paused
+        paused: isPaused ? waiting : 0,
       };
     }
 
@@ -188,13 +189,13 @@ export class QueueManager {
     const stats: QueueStats[] = [];
     for (const [name] of this.queues) {
       const queue = this.queues.get(name)!;
-      const [waiting, active, completed, failed, delayed, paused] = await Promise.all([
+      const [waiting, active, completed, failed, delayed, isPaused] = await Promise.all([
         queue.getWaitingCount(),
         queue.getActiveCount(),
         queue.getCompletedCount(),
         queue.getFailedCount(),
         queue.getDelayedCount(),
-        queue.getPausedCount(),
+        queue.isPaused(),
       ]);
 
       stats.push({
@@ -204,7 +205,7 @@ export class QueueManager {
         completed,
         failed,
         delayed,
-        paused,
+        paused: isPaused ? waiting : 0,
       });
     }
 

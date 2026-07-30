@@ -32,13 +32,31 @@ async function resolveWorkspace(subdomain: string) {
 }
 
 /**
+ * Continues the request with the resolved tenant pinned onto it.
+ *
+ * The header must ride on the *request* — `NextResponse.next()` + `res.headers.set()`
+ * only sets an outgoing response header, which `headers()` in route handlers and
+ * server components never sees. Set/delete is unconditional so an inbound
+ * client-supplied `x-tenant-subdomain` can never survive.
+ */
+function continueWithTenant(req: NextRequest, tenantSubdomain: string | null) {
+    const requestHeaders = new Headers(req.headers);
+    if (tenantSubdomain) {
+        requestHeaders.set("x-tenant-subdomain", tenantSubdomain);
+    } else {
+        requestHeaders.delete("x-tenant-subdomain");
+    }
+    return NextResponse.next({ request: { headers: requestHeaders } });
+}
+
+/**
  * Route protection proxy.
  */
 export default async function proxy(req: NextRequest) {
     const path = req.nextUrl.pathname;
 
     const hostname = req.headers.get("host") || "";
-    let tenantSubdomain = null;
+    let tenantSubdomain: string | null = null;
     const isCloudDeploy = getPublicEdition() === "cloud";
 
     if (isCloudDeploy) {
@@ -52,9 +70,7 @@ export default async function proxy(req: NextRequest) {
     }
 
     if (isDemo) {
-        const res = NextResponse.next();
-        if (tenantSubdomain) res.headers.set("x-tenant-subdomain", tenantSubdomain);
-        return res;
+        return continueWithTenant(req, tenantSubdomain);
     }
 
     if (
@@ -64,9 +80,7 @@ export default async function proxy(req: NextRequest) {
         || path.startsWith("/cesium")
         || path.includes(".")
     ) {
-        const res = NextResponse.next();
-        if (tenantSubdomain) res.headers.set("x-tenant-subdomain", tenantSubdomain);
-        return res;
+        return continueWithTenant(req, tenantSubdomain);
     }
 
     if (isCloudDeploy && tenantSubdomain) {
@@ -80,9 +94,7 @@ export default async function proxy(req: NextRequest) {
     }
 
     if (path.startsWith("/setup") || path.startsWith("/login")) {
-        const res = NextResponse.next();
-        if (tenantSubdomain) res.headers.set("x-tenant-subdomain", tenantSubdomain);
-        return res;
+        return continueWithTenant(req, tenantSubdomain);
     }
 
     if (isCloudDeploy && !tenantSubdomain) {
@@ -112,9 +124,7 @@ export default async function proxy(req: NextRequest) {
     }
 
     if (token) {
-        const res = NextResponse.next();
-        if (tenantSubdomain) res.headers.set("x-tenant-subdomain", tenantSubdomain);
-        return res;
+        return continueWithTenant(req, tenantSubdomain);
     }
 
     try {

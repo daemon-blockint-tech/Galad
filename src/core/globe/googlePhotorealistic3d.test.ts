@@ -4,7 +4,9 @@ vi.mock("@/lib/userApiKeys", () => ({
     getUserApiKey: vi.fn(() => ""),
 }));
 
-describe("googlePhotorealistic3d", () => {
+// The module under test pulls in Cesium; whichever test imports it first pays a
+// multi-second cold transform, which overruns the 5s default under a full run.
+describe("googlePhotorealistic3d", { timeout: 60000 }, () => {
     const originalEnv = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
     beforeEach(() => {

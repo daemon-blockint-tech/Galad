@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/db';
 import { LLMQueryInterpreter } from '@/core/query/LLMQueryInterpreter';
 import { TemporalQueryEngine } from '@/core/query/TemporalQueryEngine';
 import { PredictiveQueryEngine } from '@/core/query/PredictiveQueryEngine';
@@ -8,15 +8,14 @@ import { CorrelationQueryEngine } from '@/core/query/CorrelationQueryEngine';
 import { AnomalyDetectionEngine } from '@/core/ml/AnomalyDetectionEngine';
 import { SemanticStore } from '@/core/semantic/semanticStore';
 
-const db = new PrismaClient();
-const anomalyEngine = new AnomalyDetectionEngine();
 const semanticStore = new SemanticStore();
-const temporalEngine = new TemporalQueryEngine(db, anomalyEngine, semanticStore);
-const predictiveEngine = new PredictiveQueryEngine(db, anomalyEngine);
-const searchIndex = new FullTextSearchIndex(db);
-const correlationEngine = new CorrelationQueryEngine(db);
+const anomalyEngine = new AnomalyDetectionEngine(semanticStore);
+const temporalEngine = new TemporalQueryEngine(prisma, anomalyEngine, semanticStore);
+const predictiveEngine = new PredictiveQueryEngine(prisma, anomalyEngine);
+const searchIndex = new FullTextSearchIndex(prisma);
+const correlationEngine = new CorrelationQueryEngine(prisma);
 const llmInterpreter = new LLMQueryInterpreter(
-  db,
+  prisma,
   temporalEngine,
   predictiveEngine,
   searchIndex,

@@ -4,7 +4,7 @@
  * Handles command validation, execution, and result tracking.
  */
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@/generated/prisma';
 
 export interface C2Command {
   commandId: string;

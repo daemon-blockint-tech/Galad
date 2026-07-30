@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import type * as THREE from 'three';
 import { Graph3DRenderer } from '@/core/graph/Graph3DRenderer';
 import { ZoomIn, ZoomOut, RotateCcw, Maximize2 } from 'lucide-react';
 
@@ -47,7 +48,6 @@ export function Graph3DVisualization({
   const cameraRef = useRef<any>(null);
   const graphRef = useRef<Graph3DRenderer | null>(null);
   const raycasterRef = useRef<any>(null);
-  const mouseRef = useRef({ x: 0, y: 0 });
   const cameraRotationRef = useRef({ x: 0, y: 0 });
 
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
@@ -60,7 +60,7 @@ export function Graph3DVisualization({
     if (!containerRef.current) return;
 
     // Dynamically import Three.js
-    Promise.all([import('three'), import('three/examples/jsm/controls/OrbitControls')]).then(
+    Promise.all([import('three'), import('three/examples/jsm/controls/OrbitControls.js')]).then(
       ([THREE, OrbitControlsModule]) => {
         const OrbitControls = OrbitControlsModule.OrbitControls;
 
@@ -95,7 +95,7 @@ export function Graph3DVisualization({
         // Add entities as nodes
         for (const entity of entities) {
           const size = 1 + entity.confidence * 4;
-          const color = this.getThreatColor(entity.threatLevel);
+          const color = getThreatColor(entity.threatLevel);
 
           graph.addNode({
             id: entity.id,
@@ -175,12 +175,13 @@ export function Graph3DVisualization({
         // Mouse interaction
         const raycaster = new THREE.Raycaster();
         raycasterRef.current = raycaster;
+        const pointer = new THREE.Vector2();
 
         const onMouseMove = (event: MouseEvent) => {
-          mouseRef.current.x = (event.clientX / window.innerWidth) * 2 - 1;
-          mouseRef.current.y = -(event.clientY / window.innerHeight) * 2 + 1;
+          pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+          pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
-          raycaster.setFromCamera(mouseRef.current, camera);
+          raycaster.setFromCamera(pointer, camera);
           const intersects = raycaster.intersectObjects(Array.from(nodeMeshes.values()));
 
           let hoveredId: string | null = null;
@@ -193,7 +194,7 @@ export function Graph3DVisualization({
         };
 
         const onClick = (event: MouseEvent) => {
-          raycaster.setFromCamera(mouseRef.current, camera);
+          raycaster.setFromCamera(pointer, camera);
           const intersects = raycaster.intersectObjects(Array.from(nodeMeshes.values()));
 
           if (intersects.length > 0) {
@@ -236,11 +237,11 @@ export function Graph3DVisualization({
 
               // Highlight selected/hovered nodes
               if (node.id === selectedNode) {
-                (mesh.material as THREE.Material).emissive.setHex(0xff6b00);
+                (mesh.material as THREE.MeshPhongMaterial).emissive.setHex(0xff6b00);
               } else if (node.id === hoveredNode) {
-                (mesh.material as THREE.Material).emissive.setHex(0xfbbf24);
+                (mesh.material as THREE.MeshPhongMaterial).emissive.setHex(0xfbbf24);
               } else {
-                (mesh.material as THREE.Material).emissive.setHex(0x000000);
+                (mesh.material as THREE.MeshPhongMaterial).emissive.setHex(0x000000);
               }
             }
           }
@@ -292,11 +293,11 @@ export function Graph3DVisualization({
     );
   }, [entities, relationships, autoRotate, cameraSpeed, onNodeSelect, onNodeHover]);
 
-  const getThreatColor = (threatLevel: number): number => {
-    if (threatLevel > 0.8) return 0xdc2626;
-    if (threatLevel > 0.6) return 0xf97316;
-    if (threatLevel > 0.4) return 0xeab308;
-    return 0x22c55e;
+  const getThreatColor = (threatLevel: number): string => {
+    if (threatLevel > 0.8) return '#dc2626';
+    if (threatLevel > 0.6) return '#f97316';
+    if (threatLevel > 0.4) return '#eab308';
+    return '#22c55e';
   };
 
   const handleResetCamera = () => {

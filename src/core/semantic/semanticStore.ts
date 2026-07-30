@@ -9,10 +9,22 @@ import type {
   SemanticProperty,
   EntityProvenance,
   SemanticRelationship,
+  RelationshipType,
   EntityType,
   EntityDomain,
   Disposition,
 } from '@maven-system/plugin-sdk';
+
+const RELATIONSHIP_TYPES: readonly string[] = [
+  'part_of', 'controlled_by', 'same_as', 'related_to', 'parent_of',
+  'member_of', 'associated_with', 'threatens', 'defends', 'supports',
+  'located_at', 'operates_from', 'communicates_with', 'owns', 'commands',
+  'escorts', 'observes', 'deployed_by', 'assigned_to', 'fusion_of',
+] satisfies readonly RelationshipType[];
+
+function isRelationshipType(value: string): value is RelationshipType {
+  return RELATIONSHIP_TYPES.includes(value);
+}
 
 interface StoredClassification extends EntityClassification {
   entityPluginId: string;
@@ -167,12 +179,13 @@ export class SemanticStore {
       id,
       sourceId: `${sourcePluginId}:${sourceEntityId}`,
       targetId: `${targetPluginId}:${targetEntityId}`,
-      relationshipType,
+      // Boundary conversion: plugin-supplied strings outside the SDK taxonomy
+      // degrade to the generic association type.
+      relationshipType: isRelationshipType(relationshipType)
+        ? relationshipType
+        : 'related_to',
       confidence,
-      sourcePluginId,
-      sourceEntityId,
-      targetPluginId,
-      targetEntityId,
+      establishedAt: Date.now(),
     };
     this.relationships.set(id, relationship);
     return id;

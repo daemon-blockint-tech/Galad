@@ -92,7 +92,7 @@ export class GraphRenderer {
       const node: GraphNode = {
         id: nodeId,
         label: entity.label || entity.entityId,
-        entityType: classification?.entityType,
+        entityType: classification?.type,
         threatLevel: threat?.threatLevel,
         confidence: classification?.confidence ?? 0.8,
         radius: this.getNodeRadius(threat?.threatLevel),
@@ -114,7 +114,8 @@ export class GraphRenderer {
       const relationships = this.store.getRelationshipsFrom?.(pluginId, entityId) ?? [];
 
       for (const rel of relationships) {
-        const targetId = `${rel.targetPluginId}|${rel.targetEntityId}`;
+        // rel.targetId is "pluginId:entityId"; node ids use "pluginId|entityId"
+        const targetId = rel.targetId.replace(':', '|');
 
         // Only add edge if both nodes exist
         if (this.nodes.has(targetId)) {

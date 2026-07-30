@@ -47,8 +47,8 @@ describe('SemanticQueryEngine', () => {
     store.setClassification('maritime', 'ship-1', maritimeVessel);
 
     // Add relationships
-    store.addRelationship('military', 'unit-1', 'aviation', 'aircraft-1', 'controls', 0.9);
-    store.addRelationship('military', 'unit-1', 'aviation', 'aircraft-2', 'controls', 0.85);
+    store.addRelationship('military', 'unit-1', 'aviation', 'aircraft-1', 'commands', 0.9);
+    store.addRelationship('military', 'unit-1', 'aviation', 'aircraft-2', 'commands', 0.85);
   });
 
   describe('find_by_type', () => {
@@ -136,11 +136,11 @@ describe('SemanticQueryEngine', () => {
         type: 'query_relationships',
         sourcePluginId: 'military',
         sourceEntityId: 'unit-1',
-        relationshipTypes: ['controls'],
+        relationshipTypes: ['commands'],
       });
 
       expect(result.count).toBe(2);
-      expect(result.entities.every(e => e.relationshipType === 'controls')).toBe(true);
+      expect(result.entities.every(e => e.relationshipType === 'commands')).toBe(true);
     });
 
     it('should include relationship confidence', async () => {
@@ -219,7 +219,7 @@ describe('SemanticQueryEngine', () => {
       });
 
       expect(Object.keys(result.relatedByRelationship).length).toBeGreaterThan(0);
-      expect(result.relatedByRelationship['controls']).toBeDefined();
+      expect(result.relatedByRelationship['commands']).toBeDefined();
     });
 
     it('should count threat types', () => {
@@ -265,7 +265,7 @@ describe('SemanticQueryEngine', () => {
         latitude: 40.5,
         longitude: -74.2,
         radiusKm: 100,
-        disposition: 'friendly',
+        disposition: 'friend',
       });
 
       expect(result.entities.every(e => e.classification?.disposition === 'friend')).toBe(true);

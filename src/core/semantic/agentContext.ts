@@ -25,6 +25,7 @@ export interface ThreatIntelligence {
     proximity?: Confidence;
     capability?: Confidence;
     velocity?: Confidence; // How fast is it approaching?
+    llmReasoning?: Confidence; // LLM assessment weight (llmThreatInference)
   };
   relatedThreats: Array<{ entityId: string; relationshipType: string }>;
   assessedAt: number;

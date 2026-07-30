@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/db';
 import { CorrelationQueryEngine } from '@/core/query/CorrelationQueryEngine';
 
-const db = new PrismaClient();
-const correlationEngine = new CorrelationQueryEngine(db);
+const correlationEngine = new CorrelationQueryEngine(prisma);
 
 /**
  * POST /api/ops/correlations

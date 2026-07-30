@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/db';
 import { C2CommandExecutor } from '@/core/c2/C2CommandExecutor';
 
-const db = new PrismaClient();
-const commandExecutor = new C2CommandExecutor(db);
+const commandExecutor = new C2CommandExecutor(prisma);
 
 /**
  * POST /api/ops/c2/commands
@@ -37,17 +36,17 @@ export async function POST(request: NextRequest) {
 
     // Record command in audit trail
     try {
-      await db.alertEvent.create({
+      await prisma.alertEvent.create({
         data: {
           alertId: entityId,
           eventType: 'c2_command',
-          eventData: {
+          eventData: JSON.stringify({
             commandId,
             parameters,
             result: result.result,
             status: result.status,
             duration: result.duration,
-          },
+          }),
           actorAction: `Executed command: ${commandId}`,
           actorNotes: `Command result: ${result.status}`,
         },

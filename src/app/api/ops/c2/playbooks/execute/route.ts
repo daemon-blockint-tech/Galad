@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PlaybookEngine } from '@/core/c2/PlaybookEngine';
 import { C2CommandExecutor } from '@/core/c2/C2CommandExecutor';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/db';
 
-const db = new PrismaClient();
-const commandExecutor = new C2CommandExecutor(db);
-const playbookEngine = new PlaybookEngine(db, commandExecutor);
+const commandExecutor = new C2CommandExecutor(prisma);
+const playbookEngine = new PlaybookEngine(prisma, commandExecutor);
 
 /**
  * POST /api/ops/c2/playbooks/execute

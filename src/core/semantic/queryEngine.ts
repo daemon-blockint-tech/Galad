@@ -135,7 +135,7 @@ export class SemanticQueryEngine {
             type: cls.type,
             domain: cls.domain,
             disposition: cls.disposition,
-            subtypes: cls.subtypes ? JSON.parse(cls.subtypes) : undefined,
+            subtypes: cls.subtypes,
             confidence: cls.confidence,
           },
         });
@@ -204,7 +204,7 @@ export class SemanticQueryEngine {
               type: cls.type,
               domain: cls.domain,
               disposition: cls.disposition,
-              subtypes: cls.subtypes ? JSON.parse(cls.subtypes) : undefined,
+              subtypes: cls.subtypes,
               confidence: cls.confidence,
             }
             : undefined,
@@ -268,7 +268,7 @@ export class SemanticQueryEngine {
             type: cls.type,
             domain: cls.domain,
             disposition: cls.disposition,
-            subtypes: cls.subtypes ? JSON.parse(cls.subtypes) : undefined,
+            subtypes: cls.subtypes,
             confidence: cls.confidence,
           },
         });
@@ -368,7 +368,7 @@ export class SemanticQueryEngine {
             type: targetCls.type,
             domain: targetCls.domain,
             disposition: targetCls.disposition,
-            subtypes: targetCls.subtypes ? JSON.parse(targetCls.subtypes) : undefined,
+            subtypes: targetCls.subtypes,
             confidence: targetCls.confidence,
           }
           : undefined,

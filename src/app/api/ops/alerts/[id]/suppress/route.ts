@@ -5,20 +5,41 @@ import { getOpsUserId, getTenantId } from '@/lib/ops/session';
 /**
  * PATCH /api/ops/alerts/[id]/suppress — suppress an alert temporarily.
  */
-export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+/** Longest a client may suppress an alert for: 30 days. */
+const MAX_SUPPRESS_MS = 30 * 24 * 60 * 60 * 1000;
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const userId = await getOpsUserId();
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const tenantId = await getTenantId();
-  const alertId = params.id;
+  const { id: alertId } = await params;
 
   try {
     const body = await request.json().catch(() => ({}));
-    const durationMs = typeof body.durationMs === 'number' ? body.durationMs : 3600000; // 1 hour default
+    const durationMs = body.durationMs === undefined ? 3600000 : body.durationMs;
+    if (
+      typeof durationMs !== 'number'
+      || !Number.isFinite(durationMs)
+      || durationMs <= 0
+      || durationMs > MAX_SUPPRESS_MS
+    ) {
+      return NextResponse.json(
+        { error: `durationMs must be between 1 and ${MAX_SUPPRESS_MS}` },
+        { status: 400 },
+      );
+    }
 
     const suppressedUntil = new Date(Date.now() + durationMs);
+
+    if (!(await prisma.alert.findUnique({ where: { id: alertId } }))) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
 
     const alert = await prisma.alert.update({
       where: { id: alertId },
@@ -40,20 +61,8 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       },
     });
 
-    // Schedule re-activation
-    setTimeout(async () => {
-      try {
-        const current = await prisma.alert.findUnique({ where: { id: alertId } });
-        if (current && current.status === 'suppressed') {
-          await prisma.alert.update({
-            where: { id: alertId },
-            data: { status: 'active' },
-          });
-        }
-      } catch (error) {
-        console.error(`Failed to reactivate alert ${alertId}:`, error);
-      }
-    }, durationMs);
+    // No re-activation timer: `suppressedUntil` is persisted and readers treat
+    // an elapsed suppression as active, which survives a process restart.
 
     return NextResponse.json({
       id: alert.id,

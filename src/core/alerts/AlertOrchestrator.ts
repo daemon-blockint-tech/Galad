@@ -403,20 +403,9 @@ export class AlertOrchestrator {
       },
     });
 
-    // Schedule re-activation after duration
-    setTimeout(async () => {
-      try {
-        const alert = await this.db.alert.findUnique({ where: { id: alertId } });
-        if (alert && alert.status === 'suppressed') {
-          await this.db.alert.update({
-            where: { id: alertId },
-            data: { status: 'active' },
-          });
-        }
-      } catch (error) {
-        console.error(`Failed to reactivate alert ${alertId}:`, error);
-      }
-    }, durationMs);
+    // Re-activation is not scheduled: `suppressedUntil` is persisted and
+    // getActiveAlerts treats an elapsed suppression as active. An in-process
+    // timer would be lost on restart, suppressing the alert forever.
   }
 
   /**
@@ -426,8 +415,12 @@ export class AlertOrchestrator {
     const alerts = await this.db.alert.findMany({
       where: {
         tenantId: this.tenantId,
-        status: 'active',
         severity: severity ? severity : undefined,
+        // A suppression that has elapsed counts as active again — see suppressAlert.
+        OR: [
+          { status: 'active' },
+          { status: 'suppressed', suppressedUntil: { lte: new Date() } },
+        ],
       },
       orderBy: [
         { severity: 'asc' },

@@ -27,7 +27,7 @@ export class SemanticAgent {
   private queryEngine: SemanticQueryEngine;
   private graph: OntologyGraph;
   private threatEngine: ThreatInferenceEngine;
-  private context: AgentContext;
+  protected context: AgentContext;
 
   private userId: string;
   private tenantId: string | null;
@@ -338,7 +338,7 @@ export class SemanticAgent {
   /**
    * Build action for a threat entity.
    */
-  private buildAction(
+  protected buildAction(
     entityId: string,
     priority: 'low' | 'medium' | 'high' | 'critical',
   ): { action: AgentAction } {
@@ -367,7 +367,6 @@ export class SemanticAgent {
         action: {
           action: 'highlight_layer',
           pluginId,
-          enabled: true,
         },
       };
     } else {

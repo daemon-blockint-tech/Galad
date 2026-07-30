@@ -22,7 +22,7 @@ export function TemporalVisualization({
   const [speed, setSpeed] = useState(1);
   const [metadata, setMetadata] = useState(playback.getMetadata());
   const [snapshot, setSnapshot] = useState<TemporalSnapshot | null>(playback.getSnapshot());
-  const animationRef = useRef<number>();
+  const animationRef = useRef<number | undefined>(undefined);
 
   // Update display every frame when playing
   useEffect(() => {

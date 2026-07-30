@@ -5,7 +5,7 @@
  * Enhanced with Mission Autonomy capabilities: Intent-to-Task, Sensor Fusion, Resource Management, Dynamic Planning.
  */
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@/generated/prisma';
 import { C2CommandExecutor } from './C2CommandExecutor';
 import { IntentToTaskBreakdown, TaskObjective, DecomposedTask } from './IntentToTaskBreakdown';
 import { SensorFusion, SensorData, FusedThreatSignal } from './SensorFusion';

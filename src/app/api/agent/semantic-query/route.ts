@@ -8,6 +8,7 @@
 
 import { NextResponse, type NextRequest } from 'next/server';
 import { auth } from '@/lib/auth';
+import { getTenantId } from '@/lib/ops/session';
 import { SemanticQueryEngine } from '@/core/semantic/queryEngine';
 import { getGlobalSemanticStore } from '@/core/semantic';
 import type {
@@ -62,7 +63,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const store = getGlobalSemanticStore(session.user.tenantId ?? null);
+    const store = getGlobalSemanticStore(await getTenantId());
     const engine = new SemanticQueryEngine(store);
 
     // Route to appropriate handler based on query type

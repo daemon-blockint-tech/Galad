@@ -14,7 +14,6 @@ import {
   Layers,
   Eye,
   EyeOff,
-  Crosshair2,
   TrendingUp,
 } from 'lucide-react';
 

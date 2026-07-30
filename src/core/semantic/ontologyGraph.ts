@@ -203,9 +203,11 @@ export class OntologyGraph {
       .filter((r) => r.relationshipType === 'controlled_by');
 
     if (controlledBy.length > 0) {
+      const [controllerPluginId, controllerEntityId] =
+        controlledBy[0].sourceId.split(':');
       const controllerClassification = this.store.getClassification(
-        controlledBy[0].sourcePluginId,
-        controlledBy[0].sourceEntityId,
+        controllerPluginId,
+        controllerEntityId,
       );
       if (controllerClassification?.type === 'organization') {
         return 'vehicle'; // Heuristic
