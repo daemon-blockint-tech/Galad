@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { CorrelationQueryEngine } from '@/core/query/CorrelationQueryEngine';
 import { getOpsUserId } from '@/lib/ops/session';
+import { getGlobalSemanticStore } from '@/core/semantic/semanticStore';
 
-const correlationEngine = new CorrelationQueryEngine(prisma);
+const correlationEngine = new CorrelationQueryEngine(prisma, undefined, getGlobalSemanticStore());
 
 /**
  * POST /api/ops/correlations

@@ -3,8 +3,8 @@
  * @description Unit tests for AnomalyDetectionEngine
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { AnomalyDetectionEngine, EntityBehavior } from './AnomalyDetectionEngine';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { AnomalyDetectionEngine, EntityBehavior, IsolationForest } from './AnomalyDetectionEngine';
 import { SemanticStore } from '@/core/semantic/semanticStore';
 
 describe('AnomalyDetectionEngine', () => {
@@ -332,7 +332,9 @@ describe('AnomalyDetectionEngine', () => {
         },
       };
 
-      engine.recordBehavior(behavior);
+      for (let i = 0; i < 100; i++) {
+        engine.recordBehavior({ ...behavior, timestamp: behavior.timestamp + i });
+      }
       engine.trainModel();
 
       const scores = engine.detectAnomalies([behavior]);
@@ -367,9 +369,7 @@ describe('AnomalyDetectionEngine', () => {
       expect(stats.modelsCount).toBe(1);
     });
 
-    it('should warn when insufficient training data', () => {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
+    it('should refuse to train on insufficient data instead of silently no-oping', () => {
       for (let i = 0; i < 50; i++) {
         engine.recordBehavior({
           entityId: 'entity-1',
@@ -387,10 +387,32 @@ describe('AnomalyDetectionEngine', () => {
         });
       }
 
-      engine.trainModel();
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Insufficient data'));
+      expect(() => engine.trainModel()).toThrow('Insufficient data');
+      // ...and the untrained model must not report itself as a model.
+      expect(engine.getStats().modelsCount).toBe(0);
+    });
 
-      warnSpy.mockRestore();
+    it('should refuse to score against an untrained model', () => {
+      const behavior: EntityBehavior = {
+        entityId: 'entity-1',
+        pluginId: 'plugin-1',
+        timestamp: Date.now(),
+        features: {
+          speed: 100,
+          acceleration: 50,
+          heading: 45,
+          headingChange: 15,
+          proximity: 0.8,
+          activityLevel: 0.6,
+          deviceAnomalyCount: 0,
+        },
+      };
+
+      engine.recordBehavior(behavior);
+
+      // Previously returned [{ severity: 'none' }] — a clean sweep from a
+      // model with zero trees.
+      expect(() => engine.detectAnomalies([behavior])).toThrow('not trained');
     });
 
     it('should track baseline and model statistics', () => {
@@ -414,11 +436,48 @@ describe('AnomalyDetectionEngine', () => {
       const stats = engine.getStats();
       expect(stats.trainingDataSize).toBe(100);
       expect(stats.baselineCount).toBe(5); // 5 unique entities
-      expect(stats.modelsCount).toBe(1);
+      expect(stats.modelsCount).toBe(0); // nothing trained yet
+
+      engine.trainModel();
+      expect(engine.getStats().modelsCount).toBe(1);
     });
   });
 
   describe('isolation forest', () => {
+    const behaviorAt = (i: number, scale = 1): EntityBehavior => ({
+      entityId: 'entity-1',
+      pluginId: 'plugin-1',
+      timestamp: 1_700_000_000_000 + i * 1000,
+      features: {
+        speed: (100 + (i % 17)) * scale,
+        acceleration: (50 + (i % 11)) * scale,
+        heading: (45 + (i % 13)) * scale,
+        headingChange: (15 + (i % 7)) * scale,
+        proximity: (0.8 + (i % 5) / 100) * scale,
+        activityLevel: (0.6 + (i % 3) / 100) * scale,
+        deviceAnomalyCount: (i % 2) * scale,
+      },
+    });
+
+    it('should normalise scores by subsample size, not by the constant 1', () => {
+      const forest = new IsolationForest(100, 10);
+      const training = Array.from({ length: 200 }, (_, i) => behaviorAt(i));
+      forest.train(training);
+
+      const score = forest.score(behaviorAt(3, 500));
+
+      // score = 2^(-E[h(x)]/c(psi)). psi = ceil(sqrt(200)) = 15, so
+      // c(15) = 2*(ln 14 + 0.5772) - 2*14/15 ~= 4.57. With normalizer() === 1
+      // the same forest returns score^c(15) ~= 0.07 — every severity in
+      // scoreToSeverity then collapses toward 'none'.
+      expect(score).toBeGreaterThan(0.4);
+      expect(score).toBeLessThanOrEqual(1);
+    });
+
+    it('should reject scoring before training', () => {
+      expect(() => new IsolationForest().score(behaviorAt(0))).toThrow('not trained');
+    });
+
     it('should score normal points lower than anomalies', () => {
       const normalBehaviors: EntityBehavior[] = [];
       for (let i = 0; i < 200; i++) {

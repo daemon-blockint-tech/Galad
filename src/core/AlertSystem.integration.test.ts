@@ -136,11 +136,13 @@ describe('Alert System Integration (Phase 5a-5b)', () => {
       const normalScores = anomalyEngine.detectAnomalies([normalBehaviors[normalBehaviors.length - 1]]);
 
       expect(anomalyScores).toHaveLength(1);
-      // The engine combines ml 0.6 / baseline 0.4 and caps baseline deviation at
-      // 1, so even a fully saturated outlier tops out around 0.45 -> 'medium'.
+      // The engine combines ml 0.6 / baseline 0.4. With the isolation-forest
+      // score normalised by c(psi) the ml term carries real weight, so a
+      // saturated outlier lands in 'high' — under the old normalizer() === 1
+      // the ml term was ~0.06 and the same outlier read 'medium'.
       expect(anomalyScores[0].baselineDeviation).toBeGreaterThan(0.8);
       expect(anomalyScores[0].score).toBeGreaterThan(normalScores[0].score);
-      expect(anomalyScores[0].severity).toBe('medium');
+      expect(anomalyScores[0].severity).toBe('high');
 
       // Step 3: Create alert from anomaly
       const alertInput = {

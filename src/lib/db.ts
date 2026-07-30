@@ -1,6 +1,7 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import { headers } from "next/headers";
+import { isCloud } from "@/core/edition";
 import { Prisma, PrismaClient } from "../generated/prisma";
 
 /**
@@ -28,6 +29,32 @@ export const TENANT_SCOPED_MODELS = new Set(
         .map((model) => model.name),
 );
 
+/**
+ * Fail closed on the cloud edition.
+ *
+ * The injection below is conditional on a resolved subdomain, so a request that
+ * reached the origin on a host carrying no workspace — the apex, a custom
+ * domain, the container's own address — used to run every tenant-scoped query
+ * with no filter at all. `src/proxy.ts` now refuses those hosts; this is the
+ * backstop for anything that gets past it.
+ *
+ * Only guards requests. Scripts, seeders and queue workers run outside a
+ * request scope by design and pass their own `tenantId` explicitly, and the
+ * other two editions have no tenants at all — both are left untouched.
+ */
+export function assertTenantResolved(
+    model: string,
+    operation: string,
+    tenantSubdomain: string | null,
+    inRequestScope: boolean,
+): void {
+    if (!isCloud || !inRequestScope || tenantSubdomain) return;
+    if (!TENANT_SCOPED_MODELS.has(model)) return;
+    throw new Error(
+        `[db] Refusing to run ${model}.${operation} unscoped: this request resolved no workspace.`,
+    );
+}
+
 function applyTenantIsolation(client: any) {
     // Use Prisma Client Extension to inject RLS
     return client.$extends({
@@ -36,13 +63,17 @@ function applyTenantIsolation(client: any) {
                 async $allOperations({
  model, operation, args, query
 }: { model: string, operation: string, args: any, query: any }) {
-                    let tenantSubdomain = null;
+                    let tenantSubdomain: string | null = null;
+                    let inRequestScope = false;
                     try {
                         const headersList = await headers();
+                        inRequestScope = true;
                         tenantSubdomain = headersList.get("x-tenant-subdomain");
-                    } catch (e) {
+                    } catch {
                         // Not in a request context (e.g. scripts, background jobs)
                     }
+
+                    assertTenantResolved(model, operation, tenantSubdomain, inRequestScope);
 
                     if (tenantSubdomain && TENANT_SCOPED_MODELS.has(model)) {
                         args = args || {};

@@ -152,6 +152,12 @@ export interface QueryResult {
   count: number;
   executionTimeMs: number;
   error?: string;
+  /**
+   * Spatial queries only: candidates that matched the semantic filters but were
+   * excluded because no position is known for them. Non-zero means the radius
+   * result is incomplete, not that nothing else is out there.
+   */
+  unlocatedCount?: number;
 }
 
 /**

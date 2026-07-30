@@ -24,9 +24,15 @@ export interface PredictionResult {
     upper95: number;
     lower95: number;
   }>;
-  trend: 'improving' | 'degrading' | 'stable';
-  riskLevel: 'low' | 'medium' | 'high' | 'critical';
+  trend: 'improving' | 'degrading' | 'stable' | 'unknown';
+  riskLevel: 'low' | 'medium' | 'high' | 'critical' | 'unknown';
   recommendations: string[];
+  /**
+   * True when there was no history to forecast from. The forecast is empty and
+   * trend/riskLevel are 'unknown' — this is an absence of measurement, not a
+   * low-risk finding.
+   */
+  insufficientData?: boolean;
 }
 
 /**
@@ -153,6 +159,24 @@ export class PredictiveQueryEngine {
         orderBy: { createdAt: 'desc' },
       });
 
+      // calculateEscalationRate needs at least two alerts to see a change in
+      // criticality; below that a flat zero forecast was still being stamped
+      // with 70% confidence.
+      if (recentAlerts.length < 2) {
+        results.push({
+          type: 'threat_escalation',
+          entityId,
+          forecast: [],
+          trend: 'unknown',
+          riskLevel: 'unknown',
+          insufficientData: true,
+          recommendations: [
+            `Fewer than 2 high-severity alerts for ${entityId} in the last 7 days: escalation cannot be forecast.`,
+          ],
+        });
+        continue;
+      }
+
       // Calculate escalation velocity
       const escalationRate = this.calculateEscalationRate(recentAlerts);
 
@@ -171,7 +195,7 @@ export class PredictiveQueryEngine {
         forecast.push({
           timestamp: Math.floor(forecastTime),
           predictedValue,
-          confidence: 0.7,
+          confidence: recentAlerts.length > 5 ? 0.7 : 0.5,
           upper95: Math.min(1, predictedValue * 1.3),
           lower95: Math.max(0, predictedValue * 0.7),
         });
@@ -218,7 +242,24 @@ export class PredictiveQueryEngine {
         .map((a) => (a.resolvedAt!.getTime() - a.createdAt.getTime()) / (60 * 60 * 1000)) // In hours
         .filter((t) => t > 0 && t < 168); // Filter outliers (> 1 week)
 
-      const avgResolutionTime = resolutionTimes.length > 0 ? resolutionTimes.reduce((a, b) => a + b) / resolutionTimes.length : 24;
+      // No resolution history: there is no ETA to report. The old fallback
+      // emitted a hardcoded 24h as if it had been measured.
+      if (resolutionTimes.length === 0) {
+        results.push({
+          type: 'eta_resolution',
+          entityId,
+          forecast: [],
+          trend: 'unknown',
+          riskLevel: 'unknown',
+          insufficientData: true,
+          recommendations: [
+            `No resolved alerts for ${entityId}: resolution time cannot be estimated.`,
+          ],
+        });
+        continue;
+      }
+
+      const avgResolutionTime = resolutionTimes.reduce((a, b) => a + b) / resolutionTimes.length;
 
       // Generate ETA forecast
       const forecast: PredictionResult['forecast'] = [];

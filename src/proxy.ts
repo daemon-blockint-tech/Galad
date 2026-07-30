@@ -19,6 +19,69 @@ function internalAppUrl() {
     return process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || `http://127.0.0.1:${process.env.PORT || "3000"}`;
 }
 
+/**
+ * Hosts on which the app reaches itself.
+ *
+ * `resolveWorkspace` below self-fetches `internalAppUrl()`, which defaults to
+ * loopback. Those requests carry no workspace subdomain and no session cookie,
+ * so the cloud host guard must let them through or the middleware 404s its own
+ * workspace lookup and every page with it.
+ */
+function isLoopbackHost(hostname: string): boolean {
+    const host = hostname.toLowerCase().replace(/:\d+$/, "").replace(/^\[|\]$/g, "");
+    return host === "127.0.0.1" || host === "localhost" || host === "::1";
+}
+
+/** Apex-only paths that predate workspaces and belong on the marketing hub. */
+const HUB_REDIRECT_PATHS = new Set(["/", "/register", "/dashboard", "/create-workspace"]);
+
+function readToken(req: NextRequest) {
+    const xfProto = req.headers.get("x-forwarded-proto");
+    const authUrl = process.env.AUTH_URL ?? process.env.NEXTAUTH_URL ?? "";
+    const isSecure = xfProto === "https"
+        || authUrl.startsWith("https://")
+        || req.nextUrl.protocol === "https:";
+    return getToken({
+        req,
+        secret: process.env.AUTH_SECRET,
+        secureCookie: isSecure,
+    });
+}
+
+/**
+ * The single gate for cross-tenant session replay.
+ *
+ * Every cookie-authenticated surface — ops routes, agent routes, favorites, the
+ * marketplace session branch, server actions, pages — passes through the
+ * middleware before its handler runs, so the check lives here instead of in
+ * dozens of route bodies. `AUTH_SECRET` is one global value: a JWT minted on
+ * `a.app.grond.dev` verifies fine on `b.app.grond.dev`, and only the `tenantId`
+ * claim tells them apart.
+ *
+ * A token minted before the claim existed reads as no tenant and is refused —
+ * cloud sessions from an older build must sign in again.
+ *
+ * `/api/auth/*` is exempt so a stale cookie can never lock a user out of signing
+ * in to the workspace they are actually on. Those routes expose the caller's own
+ * identity, never tenant data.
+ */
+async function denyForeignTenant(
+    req: NextRequest,
+    tenantSubdomain: string,
+): Promise<NextResponse | null> {
+    if (req.nextUrl.pathname.startsWith("/api/auth")) return null;
+
+    const token = await readToken(req);
+    if (!token) return null;
+
+    const tokenTenant = typeof token.tenantId === "string" ? token.tenantId : null;
+    if (tokenTenant === tenantSubdomain) return null;
+
+    return new NextResponse("Forbidden: this session belongs to a different workspace", {
+        status: 403,
+    });
+}
+
 async function resolveWorkspace(subdomain: string) {
     const cached = workspaceCache.get(subdomain);
     if (cached && Date.now() < cached.expiresAt) return cached;
@@ -115,6 +178,25 @@ export default async function proxy(req: NextRequest) {
         }
     }
 
+    // Cloud host guard. `/api/internal/*` is the middleware's own lane — it is
+    // the target of the self-fetch above and reads only `Workspace`, which
+    // carries no tenantId — so exempting it cannot leak tenant data and keeps
+    // the lookup working even when `internalAppUrl()` is pointed off loopback.
+    if (isCloudDeploy && !isLoopbackHost(hostname) && !path.startsWith("/api/internal")) {
+        if (!tenantSubdomain) {
+            // Nothing maps this host to a workspace. Continuing would run every
+            // tenant-scoped query unfiltered — see the fail-closed backstop in
+            // src/lib/db.ts.
+            if (HUB_REDIRECT_PATHS.has(path)) {
+                return NextResponse.redirect("https://grond.dev/hub");
+            }
+            return new NextResponse("Workspace not found", { status: 404 });
+        }
+
+        const denied = await denyForeignTenant(req, tenantSubdomain);
+        if (denied) return denied;
+    }
+
     if (isDemo) {
         return continueWithTenant(req, tenantSubdomain);
     }
@@ -143,22 +225,7 @@ export default async function proxy(req: NextRequest) {
         return continueWithTenant(req, tenantSubdomain);
     }
 
-    if (isCloudDeploy && !tenantSubdomain) {
-        if (path === "/" || path === "/register" || path === "/dashboard" || path === "/create-workspace") {
-            return NextResponse.redirect("https://grond.dev/hub");
-        }
-    }
-
-    const xfProto = req.headers.get("x-forwarded-proto");
-    const authUrl = process.env.AUTH_URL ?? process.env.NEXTAUTH_URL ?? "";
-    const isSecure = xfProto === "https"
-        || authUrl.startsWith("https://")
-        || req.nextUrl.protocol === "https:";
-    const token = await getToken({
-        req,
-        secret: process.env.AUTH_SECRET,
-        secureCookie: isSecure,
-    });
+    const token = await readToken(req);
 
     if (path.startsWith("/admin") && !path.startsWith("/admin/forbidden")) {
         if (!token) {
@@ -173,7 +240,12 @@ export default async function proxy(req: NextRequest) {
         return continueWithTenant(req, tenantSubdomain);
     }
 
-    if (await needsFirstRunSetup()) {
+    // Not on cloud: the probe is a single global `user.count()`, which is both
+    // unscoped (the fail-closed guard in src/lib/db.ts now rejects it) and wrong
+    // there — one tenant having users said nothing about this one. Cloud
+    // workspaces are provisioned rather than first-run set up, and /setup stays
+    // reachable by hand, correctly tenant-scoped.
+    if (!isCloudDeploy && await needsFirstRunSetup()) {
         return NextResponse.redirect(new URL("/setup", req.nextUrl));
     }
 

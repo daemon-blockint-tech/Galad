@@ -236,6 +236,78 @@ describe('SemanticQueryEngine', () => {
   });
 
   describe('spatial_semantic_query', () => {
+    // Real coordinates so the distances are checkable against a map.
+    const NEW_YORK = { latitude: 40.7128, longitude: -74.006 };
+    const PHILADELPHIA = { latitude: 39.9526, longitude: -75.1652 }; // ~130 km from NYC
+    const LONDON = { latitude: 51.5074, longitude: -0.1278 }; // ~5570 km from NYC
+
+    const positionEntities = () => {
+      store.setEntity('aviation', 'aircraft-1', { ...PHILADELPHIA, timestamp: Date.now() });
+      store.setEntity('aviation', 'aircraft-2', { ...LONDON, timestamp: Date.now() });
+    };
+
+    it('should return real haversine distances, not 0', async () => {
+      positionEntities();
+
+      const result = await engine.execute({
+        type: 'spatial_semantic',
+        ...NEW_YORK,
+        radiusKm: 10000,
+        entityTypes: ['aircraft'],
+      });
+
+      const philly = result.entities.find((e) => e.entityId === 'aircraft-1');
+      const london = result.entities.find((e) => e.entityId === 'aircraft-2');
+
+      expect(philly?.distanceKm).toBeGreaterThan(125);
+      expect(philly?.distanceKm).toBeLessThan(135);
+      expect(london?.distanceKm).toBeGreaterThan(5500);
+      expect(london?.distanceKm).toBeLessThan(5650);
+      expect(philly?.latitude).toBe(PHILADELPHIA.latitude);
+    });
+
+    it('should exclude entities outside the radius', async () => {
+      positionEntities();
+
+      const result = await engine.execute({
+        type: 'spatial_semantic',
+        ...NEW_YORK,
+        radiusKm: 200,
+        entityTypes: ['aircraft'],
+      });
+
+      expect(result.entities.map((e) => e.entityId)).toEqual(['aircraft-1']);
+      expect(result.count).toBe(1);
+    });
+
+    it('should report entities with no known position instead of placing them at the query point', async () => {
+      // aircraft-1 and aircraft-2 are classified but have no stored position.
+      const result = await engine.execute({
+        type: 'spatial_semantic',
+        ...NEW_YORK,
+        radiusKm: 50,
+        entityTypes: ['aircraft'],
+      });
+
+      expect(result.entities).toHaveLength(0);
+      expect(result.unlocatedCount).toBe(2);
+    });
+
+    it('should sort results by real distance', async () => {
+      positionEntities();
+
+      const result = await engine.execute({
+        type: 'spatial_semantic',
+        ...NEW_YORK,
+        radiusKm: 10000,
+        entityTypes: ['aircraft'],
+      });
+
+      const distances = result.entities.map((e) => e.distanceKm ?? 0);
+      expect(distances).toEqual([...distances].sort((a, b) => a - b));
+      expect(new Set(distances).size).toBe(distances.length);
+    });
+
     it('should execute spatial semantic search', async () => {
       const result = await engine.execute({
         type: 'spatial_semantic',

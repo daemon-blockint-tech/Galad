@@ -47,6 +47,8 @@ export class IsolationForest {
   private trees: IsolationTree[] = [];
   private maxDepth: number;
   private numTrees: number;
+  /** Subsample size each tree was built from — drives the score normaliser. */
+  private sampleSize = 0;
 
   constructor(numTrees: number = 100, maxDepth: number = 10) {
     this.numTrees = numTrees;
@@ -58,20 +60,29 @@ export class IsolationForest {
    */
   train(data: EntityBehavior[]): void {
     this.trees = [];
+    this.sampleSize = Math.ceil(Math.sqrt(data.length));
 
     for (let i = 0; i < this.numTrees; i++) {
-      const sample = this.randomSample(data, Math.ceil(Math.sqrt(data.length)));
+      const sample = this.randomSample(data, this.sampleSize);
       const tree = new IsolationTree(this.maxDepth);
       tree.build(sample);
       this.trees.push(tree);
     }
   }
 
+  isTrained(): boolean {
+    return this.trees.length > 0;
+  }
+
   /**
    * Score a single data point (higher = more anomalous).
    */
   score(point: EntityBehavior): number {
-    if (this.trees.length === 0) return 0;
+    if (this.trees.length === 0) {
+      // A score of 0 from an untrained forest is indistinguishable from
+      // "measured and normal", so refuse instead of reporting a clean sweep.
+      throw new Error('IsolationForest is not trained: call train() before score()');
+    }
 
     let totalPathLength = 0;
     for (const tree of this.trees) {
@@ -84,9 +95,16 @@ export class IsolationForest {
     return Math.pow(2, -avgPathLength / c);
   }
 
+  /**
+   * Expected path length c(n) of an unsuccessful BST search over n points —
+   * the standard isolation-forest normaliser, evaluated at the subsample size
+   * the trees were built from. Degenerate for n <= 2, where the standard
+   * formulation uses 1 (leaving the raw 2^-E[h(x)] score).
+   */
   private normalizer(): number {
-    // Normalization factor based on sample size
-    return 1;
+    const n = this.sampleSize;
+    if (n <= 2) return 1;
+    return 2 * (Math.log(n - 1) + 0.5772156649) - 2 * (n - 1) / n;
   }
 
   private randomSample<T>(data: T[], size: number): T[] {
@@ -188,6 +206,9 @@ class IsolationNode {
   }
 }
 
+/** Minimum observations before the isolation forest can be trained. */
+const MIN_TRAINING_SAMPLES = 100;
+
 /**
  * Anomaly Detection Engine using ML.
  */
@@ -231,11 +252,15 @@ export class AnomalyDetectionEngine {
 
   /**
    * Train anomaly detection model on historical data.
+   *
+   * Throws on insufficient data: a silent no-op left callers reporting a
+   * successfully trained model that had zero trees.
    */
   trainModel(): void {
-    if (this.behaviorHistory.length < 100) {
-      console.warn('Insufficient data for model training (need 100+ samples)');
-      return;
+    if (this.behaviorHistory.length < MIN_TRAINING_SAMPLES) {
+      throw new Error(
+        `Insufficient data for model training: have ${this.behaviorHistory.length}, need ${MIN_TRAINING_SAMPLES}+ samples`,
+      );
     }
 
     this.forest.train(this.behaviorHistory);
@@ -245,6 +270,12 @@ export class AnomalyDetectionEngine {
    * Detect anomalies in current entity behaviors.
    */
   detectAnomalies(behaviors: EntityBehavior[]): AnomalyScore[] {
+    if (!this.forest.isTrained()) {
+      throw new Error(
+        'Anomaly model is not trained: cannot report anomaly scores (call trainModel() first)',
+      );
+    }
+
     const scores: AnomalyScore[] = [];
 
     for (const behavior of behaviors) {
@@ -401,7 +432,7 @@ export class AnomalyDetectionEngine {
     return {
       trainingDataSize: this.behaviorHistory.length,
       baselineCount: this.baselines.size,
-      modelsCount: 1, // Single isolation forest
+      modelsCount: this.forest.isTrained() ? 1 : 0, // Single isolation forest
     };
   }
 }

@@ -68,6 +68,50 @@ describe('ThreatInferenceEngine', () => {
       expect(threat.expiresAt).toBeDefined();
       expect(threat.expiresAt! > Date.now()).toBe(true);
     });
+
+    describe('proximity factor', () => {
+      // New York reference point; Newark is ~16 km away, Los Angeles ~3936 km.
+      const NEW_YORK = { latitude: 40.7128, longitude: -74.006 };
+
+      it('should measure proximity from distance, not relationship count', () => {
+        store.setEntity('radar', 'hostile-1', { latitude: 40.7357, longitude: -74.1724 }); // Newark
+
+        const near = engine.inferThreat('radar', 'hostile-1', NEW_YORK.latitude, NEW_YORK.longitude);
+
+        // ~16 km out of the 500 km proximity range.
+        expect(near.threatFactors.proximity).toBeGreaterThan(0.95);
+
+        store.setEntity('radar', 'hostile-1', { latitude: 34.0522, longitude: -118.2437 }); // LA
+        const far = engine.inferThreat('radar', 'hostile-1', NEW_YORK.latitude, NEW_YORK.longitude);
+
+        expect(far.threatFactors.proximity).toBe(0);
+        expect(near.threatLevel).toBe('critical');
+        expect(far.threatLevel).toBe('high');
+      });
+
+      it('should not invent a proximity factor from the relationship graph', () => {
+        // 8 relationships used to read as proximity 0.8 for an entity whose
+        // position is unknown.
+        for (let i = 0; i < 8; i++) {
+          store.addRelationship('radar', 'hostile-1', 'radar', `friend-${i}`, 'related_to');
+        }
+
+        const threat = engine.inferThreat('radar', 'hostile-1', NEW_YORK.latitude, NEW_YORK.longitude);
+
+        expect(threat.threatFactors.proximity).toBeUndefined();
+        // Falls back to the unknown-proximity prior, i.e. the same answer as
+        // not supplying a reference position at all.
+        expect(threat.threatLevel).toBe(engine.inferThreat('radar', 'hostile-1').threatLevel);
+      });
+
+      it('should never score an unlocated entity below the unknown-proximity prior', () => {
+        const withReference = engine.inferThreat('radar', 'hostile-1', NEW_YORK.latitude, NEW_YORK.longitude);
+        const withoutReference = engine.inferThreat('radar', 'hostile-1');
+
+        expect(withReference.threatFactors.capability).toBe(withoutReference.threatFactors.capability);
+        expect(withReference.threatLevel).toBe(withoutReference.threatLevel);
+      });
+    });
   });
 
   describe('detectAnomalies', () => {

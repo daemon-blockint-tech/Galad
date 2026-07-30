@@ -19,11 +19,21 @@ function getSecret(): Uint8Array {
 }
 
 /**
- * Issue a JWT scoped to marketplace API access, bound to a specific user.
- * Signed with AUTH_SECRET — no database required.
+ * Issue a JWT scoped to marketplace API access, bound to a specific user,
+ * workspace and role. Signed with AUTH_SECRET — no database required.
+ *
+ * `tenant` and `role` are required, not optional: AUTH_SECRET is one global
+ * value, so a token minted on one workspace verifies on every other one and the
+ * claims are the only thing that distinguishes them. `tenant` is null on the
+ * editions that have no workspaces (local, demo) — that is still a binding, and
+ * a token carrying it is rejected on a tenanted host.
  */
-export async function issueMarketplaceToken(userId: string): Promise<string> {
-    return new SignJWT({ scope: SCOPE })
+export async function issueMarketplaceToken(
+    userId: string,
+    tenant: string | null,
+    role: string,
+): Promise<string> {
+    return new SignJWT({ scope: SCOPE, tenant, role })
         .setProtectedHeader({ alg: "HS256" })
         .setSubject(userId)
         .setIssuer(ISSUER)
@@ -36,6 +46,10 @@ export async function issueMarketplaceToken(userId: string): Promise<string> {
 
 export interface MarketplaceTokenPayload {
     scope: string;
+    /** Workspace subdomain the token was issued on; null on local/demo. */
+    tenant: string | null;
+    /** Role the issuing session held, so the demo gate survives the redirect. */
+    role: string;
     sub: string;
     iss: string;
     aud: string;
@@ -67,6 +81,14 @@ export async function verifyMarketplaceToken(
     }
     if (!payload.sub) {
         throw new Error("Token missing subject");
+    }
+    // Absent (not null) means a token minted before the binding existed. Those
+    // are unbound to any workspace, so they are refused rather than trusted.
+    if (payload.tenant !== null && typeof payload.tenant !== "string") {
+        throw new Error("Token missing tenant binding");
+    }
+    if (typeof payload.role !== "string") {
+        throw new Error("Token missing role binding");
     }
     if (payload.jti && revokedJtis.has(payload.jti as string)) {
         throw new Error("Token has been revoked");

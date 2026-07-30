@@ -10,6 +10,7 @@ import { getClientIp } from "@/lib/rateLimit";
 import { isPluginInstallEnabled, isDemo, isDemoAdmin } from "@/core/edition";
 import { getVerifiedPluginIds } from "@/lib/marketplace/registryClient";
 import { getRequestOrigin } from "@/lib/origin";
+import { getTenantId } from "@/lib/tenant";
 
 const ALLOWED_REDIRECT_HOSTS = new Set([
     "localhost",
@@ -113,7 +114,11 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: "Install failed" }, { status: 500 });
         }
 
-        const token = await issueMarketplaceToken(session.user.id ?? "");
+        const token = await issueMarketplaceToken(
+            session.user.id ?? "",
+            await getTenantId(),
+            (session.user as { role?: string }).role ?? "user",
+        );
         const successUrl = new URL(redirectTo);
 
         // Unverified plugins need user confirmation on the WWV client side

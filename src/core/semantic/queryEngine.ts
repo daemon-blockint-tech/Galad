@@ -12,6 +12,7 @@ import type {
 } from '@maven-system/plugin-sdk';
 import { SemanticStore } from './semanticStore';
 import { OntologyGraph } from './ontologyGraph';
+import { getEntityPosition, haversineDistanceKm } from './geo';
 import type {
   SemanticQuery,
   QueryResult,
@@ -26,24 +27,6 @@ import type {
   AggregateContextQuery,
   FindPathQuery,
 } from './queryTypes';
-
-const EARTH_RADIUS_KM = 6371;
-
-function haversineDistance(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number,
-): number {
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  const c = 2 * Math.asin(Math.sqrt(a));
-  return EARTH_RADIUS_KM * c;
-}
 
 /**
  * Semantic Query Engine: executes queries over the semantic layer.
@@ -232,15 +215,20 @@ export class SemanticQueryEngine {
   }
 
   /**
-   * Spatial + semantic search (would integrate with actual entity store with lat/lon).
+   * Spatial + semantic search: real great-circle distance from the query point,
+   * filtered to the requested radius.
+   *
+   * Positions come from the store's entity cache. An entity with no known
+   * position cannot be shown to be inside the radius, so it is excluded and
+   * counted in `unlocatedCount` — the caller must be able to tell "nothing
+   * nearby" from "position unknown for N candidates".
    */
   private spatialSemanticSearch(
     query: SpatialSemanticQuery,
     startTime: number,
   ): QueryResult {
-    // Note: In production, would need actual entity location data
-    // For now, return entities matching type/domain/disposition filters
     const results: QueryResultEntity[] = [];
+    let unlocatedCount = 0;
 
     const types = query.entityTypes ?? [
       'aircraft',
@@ -250,6 +238,11 @@ export class SemanticQueryEngine {
       'facility',
     ] as EntityType[];
 
+    const maxDistanceKm = Math.min(
+      query.radiusKm,
+      query.maxDistanceKm ?? Number.POSITIVE_INFINITY,
+    );
+
     for (const entityType of types) {
       const classified = this.store.findByType(entityType);
 
@@ -258,12 +251,30 @@ export class SemanticQueryEngine {
         if (query.disposition && cls.disposition !== query.disposition) continue;
         if (query.minConfidence && cls.confidence < query.minConfidence) continue;
 
+        const position = getEntityPosition(
+          this.store,
+          cls.entityPluginId,
+          cls.entityId,
+        );
+        if (!position) {
+          unlocatedCount++;
+          continue;
+        }
+
+        const distanceKm = haversineDistanceKm(
+          query.latitude,
+          query.longitude,
+          position.latitude,
+          position.longitude,
+        );
+        if (distanceKm > maxDistanceKm) continue;
+
         results.push({
           pluginId: cls.entityPluginId,
           entityId: cls.entityId,
-          latitude: 0, // Would come from entity location
-          longitude: 0,
-          distanceKm: 0, // Would calculate haversine distance
+          latitude: position.latitude,
+          longitude: position.longitude,
+          distanceKm,
           classification: {
             type: cls.type,
             domain: cls.domain,
@@ -285,6 +296,7 @@ export class SemanticQueryEngine {
       query,
       entities: limited,
       count: limited.length,
+      unlocatedCount,
       executionTimeMs: Date.now() - startTime,
     };
   }

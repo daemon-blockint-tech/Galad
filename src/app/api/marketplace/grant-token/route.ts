@@ -6,6 +6,7 @@ import { grantTokenLimiter } from "@/lib/rateLimiters";
 import { getClientIp } from "@/lib/rateLimit";
 import { isPluginInstallEnabled, isDemo, isDemoAdmin } from "@/core/edition";
 import { getRequestOrigin } from "@/lib/origin";
+import { getTenantId } from "@/lib/tenant";
 
 const ALLOWED_REDIRECT_HOSTS = new Set([
     "localhost",
@@ -68,7 +69,11 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: "Invalid or missing redirectTo" }, { status: 400 });
         }
 
-        const token = await issueMarketplaceToken(session.user.id ?? "");
+        const token = await issueMarketplaceToken(
+            session.user.id ?? "",
+            await getTenantId(),
+            (session.user as { role?: string }).role ?? "user",
+        );
         const dest = new URL(redirectTo);
         // Token in fragment — never sent to server in logs/referer
         return NextResponse.redirect(`${dest.toString()}#token=${token}`);

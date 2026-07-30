@@ -7,6 +7,7 @@ import {
  isDemo, isCloud, getDemoAdminSecret, DEMO_ADMIN_ROLE
 } from "@/core/edition";
 import { authConfig } from "@/lib/auth.config";
+import { getTenantId } from "@/lib/tenant";
 import { SupabaseAdapter } from "@auth/supabase-adapter";
 import { resolveSupabaseConfig } from "@/lib/supabase-config";
 
@@ -33,11 +34,19 @@ const localCredentialsProvider = Credentials({
                 name: "Demo Admin",
                 email: "admin",
                 role: DEMO_ADMIN_ROLE,
+                tenantId: null,
             };
         }
 
+        // Cloud: the workspace is part of the identity. Without one the lookup
+        // would match a user in *any* tenant — `@@unique([tenantId, email])`
+        // only makes email unique within a workspace. Named explicitly rather
+        // than left to the Prisma extension so the intent survives a refactor.
+        const tenantId = await getTenantId();
+        if (isCloud && !tenantId) return null;
+
         const user = await prisma.user.findFirst({
-            where: { email }, // Note: in real cloud with RLS this would fetch tenant user if tenantId added
+            where: isCloud ? { email, tenantId } : { email },
         });
         if (!user) return null;
 
@@ -49,6 +58,7 @@ const localCredentialsProvider = Credentials({
             name: user.name,
             email: user.email,
             role: user.role,
+            tenantId: user.tenantId,
         };
     },
 });
@@ -75,6 +85,10 @@ export const {
             if (user) {
                 token.role = (user as { role?: string }).role ?? "user";
                 token.id = user.id;
+                // Binds the session to the workspace it was minted on. AUTH_SECRET
+                // is one global value, so without this claim a tenant-A cookie
+                // verifies on tenant B and `src/proxy.ts` has nothing to compare.
+                token.tenantId = (user as { tenantId?: string | null }).tenantId ?? null;
             }
             return token;
         },
@@ -82,6 +96,7 @@ export const {
             if (session.user) {
                 session.user.id = token.id as string;
                 (session.user as { role?: string }).role = token.role as string;
+                (session.user as { tenantId?: string | null }).tenantId = (token.tenantId as string | null) ?? null;
             }
             return session;
         },

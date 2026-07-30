@@ -5,6 +5,8 @@
  */
 
 import { PrismaClient } from '@/generated/prisma';
+import { SemanticStore } from '@/core/semantic/semanticStore';
+import { getEntityPosition } from '@/core/semantic/geo';
 
 export interface CorrelationQuery {
   type: 'threat_correlation' | 'temporal_alignment' | 'spatial_proximity' | 'entity_fusion';
@@ -27,23 +29,32 @@ export interface CorrelationResult {
   recommendation: string;
 }
 
+/**
+ * Signals analyzeThreatCorrelation attempts per pair (threat level similarity,
+ * alert type overlap, alert severity alignment). The score is averaged over all
+ * three so a lone signal cannot carry a pair to 1.0.
+ */
+const THREAT_CORRELATION_SIGNALS = 3;
+
 interface EntityContext {
   id: string;
   threatLevel: number;
   lastAlertTime?: number;
   alertCount: number;
   recentAlerts: Array<{ type: string; severity: string; timestamp: number }>;
-  lastLocation?: { lat: number; lng: number; timestamp: number };
+  lastLocation?: { lat: number; lng: number; timestamp?: number };
   behaviors: Array<{ timestamp: number; type: string; value: number }>;
 }
 
 export class CorrelationQueryEngine {
   private db: PrismaClient;
   private tenantId?: string;
+  private store?: SemanticStore;
 
-  constructor(db: PrismaClient, tenantId?: string) {
+  constructor(db: PrismaClient, tenantId?: string, store?: SemanticStore) {
     this.db = db;
     this.tenantId = tenantId;
+    this.store = store;
   }
 
   /**
@@ -84,6 +95,12 @@ export class CorrelationQueryEngine {
         const context1 = contexts[i];
         const context2 = contexts[j];
 
+        // Every signal below derives from alerts. With none on either side
+        // there is nothing to correlate — matching zeroes is not evidence.
+        if (context1.alertCount === 0 || context2.alertCount === 0) {
+          continue;
+        }
+
         const evidence: CorrelationResult['evidence'] = [];
 
         // Check threat level similarity
@@ -120,8 +137,10 @@ export class CorrelationQueryEngine {
           });
         }
 
-        // Calculate overall correlation
-        const correlationScore = evidence.length > 0 ? evidence.reduce((sum, e) => sum + e.score, 0) / evidence.length : 0;
+        // Averaged over the signals *attempted*, not the ones that happened to
+        // fire: dividing by evidence.length let a single signal at 1.0 become a
+        // 1.0 "very_strong" correlation.
+        const correlationScore = evidence.reduce((sum, e) => sum + e.score, 0) / THREAT_CORRELATION_SIGNALS;
 
         if (correlationScore >= threshold) {
           results.push({
@@ -207,12 +226,23 @@ export class CorrelationQueryEngine {
 
   /**
    * Analyze spatial proximity between entities.
+   *
+   * Requires a position for every requested entity. Skipping unlocated
+   * entities silently returned `[]`, which an operator reads as "checked, not
+   * co-located" when in fact no proximity test ran.
    */
   private async analyzeSpatialProximity(q: CorrelationQuery): Promise<CorrelationResult[]> {
     const { entityIds, spatialRadius = 1000, threshold = 0.5 } = q; // 1km default
     const results: CorrelationResult[] = [];
 
     const contexts = await Promise.all(entityIds.map((id) => this.buildEntityContext(id)));
+
+    const unlocated = contexts.filter((c) => !c.lastLocation).map((c) => c.id);
+    if (unlocated.length > 0) {
+      throw new Error(
+        `spatial_proximity requires a known position for every entity; none available for: ${unlocated.join(', ')}`,
+      );
+    }
 
     for (let i = 0; i < contexts.length; i++) {
       for (let j = i + 1; j < contexts.length; j++) {
@@ -243,15 +273,21 @@ export class CorrelationQueryEngine {
             },
           });
 
-          // Check if locations updated around same time
-          const locationTimeDiff = Math.abs(context1.lastLocation.timestamp - context2.lastLocation.timestamp);
-          if (locationTimeDiff < 300000) { // Within 5 minutes
-            const timeProximityScore = 1 - Math.min(1, locationTimeDiff / 300000);
-            evidence.push({
-              type: 'location_timing_proximity',
-              score: timeProximityScore,
-              details: { timeDiffMs: locationTimeDiff },
-            });
+          // Check if locations updated around same time. Only when both
+          // sources actually timestamped the fix — otherwise this signal would
+          // score two undated positions as perfectly simultaneous.
+          const time1 = context1.lastLocation.timestamp;
+          const time2 = context2.lastLocation.timestamp;
+          if (time1 !== undefined && time2 !== undefined) {
+            const locationTimeDiff = Math.abs(time1 - time2);
+            if (locationTimeDiff < 300000) { // Within 5 minutes
+              const timeProximityScore = 1 - Math.min(1, locationTimeDiff / 300000);
+              evidence.push({
+                type: 'location_timing_proximity',
+                score: timeProximityScore,
+                details: { timeDiffMs: locationTimeDiff },
+              });
+            }
           }
         }
 
@@ -287,10 +323,24 @@ export class CorrelationQueryEngine {
         const context1 = contexts[i];
         const context2 = contexts[j];
 
+        // Nothing known about one side: two entities with no alerts and no
+        // behaviours are not fusion candidates, they are unobserved.
+        if (
+          (context1.alertCount === 0 && context1.behaviors.length === 0) ||
+          (context2.alertCount === 0 && context2.behaviors.length === 0)
+        ) {
+          continue;
+        }
+
         const evidence: CorrelationResult['evidence'] = [];
 
-        // Same threat level range
-        if (Math.abs(context1.threatLevel - context2.threatLevel) < 0.15) {
+        // Same threat level range — only meaningful when both threat levels
+        // were derived from actual alerts.
+        if (
+          context1.alertCount > 0 &&
+          context2.alertCount > 0 &&
+          Math.abs(context1.threatLevel - context2.threatLevel) < 0.15
+        ) {
           evidence.push({
             type: 'threat_level_match',
             score: 0.9,
@@ -408,13 +458,30 @@ export class CorrelationQueryEngine {
         severity: a.severity,
         timestamp: a.createdAt.getTime(),
       })),
-      lastLocation: undefined, // Placeholder for location data
+      lastLocation: this.resolveLocation(entityId),
       behaviors: behaviors.map((b) => ({
         timestamp: b.createdAt.getTime(),
         type: 'anomaly',
         value: b.escalationLevel,
       })),
     };
+  }
+
+  /**
+   * Resolve an entity's last known position from the semantic store.
+   * Alert entity ids are `pluginId|entityId` (see AlertOrchestrator).
+   * Returns undefined when no store is wired in or no position is known.
+   */
+  private resolveLocation(entityId: string): EntityContext['lastLocation'] {
+    if (!this.store) return undefined;
+
+    const [pluginId, id] = entityId.split('|');
+    if (!pluginId || !id) return undefined;
+
+    const position = getEntityPosition(this.store, pluginId, id);
+    if (!position) return undefined;
+
+    return { lat: position.latitude, lng: position.longitude, timestamp: position.timestamp };
   }
 
   /**

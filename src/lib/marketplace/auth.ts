@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { isDemo, isDemoAdmin } from "@/core/edition";
+import { getTenantId } from "@/lib/tenant";
 import { verifyMarketplaceToken } from "./marketplaceToken";
 
 /**
@@ -25,11 +26,29 @@ export async function validateMarketplaceAuth(
     const authHeader = request.headers.get("authorization");
     const bearer = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
     if (bearer) {
+        let payload;
         try {
-            await verifyMarketplaceToken(bearer);
-            return null;
+            payload = await verifyMarketplaceToken(bearer);
         } catch {
             // not a valid marketplace JWT — fall through to 401
+        }
+
+        if (payload) {
+            // Same gate as the session branch above: the token carries the role
+            // its issuing session held, so a demo instance still only serves its
+            // admin. A bearer token is otherwise indistinguishable from one.
+            if (isDemo && !isDemoAdmin({ user: { role: payload.role } })) {
+                return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+            }
+            // The token verifies on every workspace — AUTH_SECRET is global — so
+            // the issuing tenant has to match the one this request resolved to.
+            if (payload.tenant !== await getTenantId()) {
+                return NextResponse.json(
+                    { error: "Token was issued for a different workspace" },
+                    { status: 403 },
+                );
+            }
+            return null;
         }
     }
 

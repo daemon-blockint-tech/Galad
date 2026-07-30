@@ -53,6 +53,24 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        // The camera iframe proxy returns third-party HTML from this origin, so it
+        // must NOT inherit the app policy above (which allows 'unsafe-inline' and
+        // would let proxied script call our authenticated same-origin APIs).
+        // `sandbox` without allow-same-origin puts the document in an opaque origin.
+        //
+        // This has to live here rather than on the route response: Next only appends
+        // a handler header when the same key is not already set by this config, so a
+        // route-level Content-Security-Policy is silently dropped. The catch-all
+        // above also sets frame-ancestors 'none' and X-Frame-Options DENY, which
+        // would block the app from framing its own proxy — this later, more specific
+        // entry wins and restores same-origin framing.
+        source: "/api/camera/proxy/iframe",
+        headers: [
+          { key: "Content-Security-Policy", value: "sandbox allow-scripts" },
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+        ],
+      },
     ];
   },
 

@@ -14,7 +14,7 @@ const anomalyEngine = new AnomalyDetectionEngine(semanticStore);
 const temporalEngine = new TemporalQueryEngine(prisma, anomalyEngine, semanticStore);
 const predictiveEngine = new PredictiveQueryEngine(prisma, anomalyEngine);
 const searchIndex = new FullTextSearchIndex(prisma);
-const correlationEngine = new CorrelationQueryEngine(prisma);
+const correlationEngine = new CorrelationQueryEngine(prisma, undefined, semanticStore);
 const llmInterpreter = new LLMQueryInterpreter(
   prisma,
   temporalEngine,

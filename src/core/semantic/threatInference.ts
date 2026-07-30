@@ -12,6 +12,7 @@ import type {
 } from '@maven-system/plugin-sdk';
 import type { ThreatIntelligence } from './agentContext';
 import { SemanticStore } from './semanticStore';
+import { getEntityPosition, haversineDistanceKm } from './geo';
 
 /**
  * Threat scoring weights.
@@ -22,6 +23,19 @@ const THREAT_WEIGHTS = {
   capability: 0.2,
   velocity: 0.15,
 };
+
+/**
+ * Neutral prior used for the proximity term when the entity's position is not
+ * known. Unknown proximity is not "definitely far": a 0 here would silently
+ * deflate the weighted sum by the full proximity weight.
+ */
+const PROXIMITY_UNKNOWN_PRIOR = 0.3;
+
+/**
+ * Range over which measured proximity decays linearly to 0. Tuning knob:
+ * a wide-area air picture wants a larger value than a port-security picture.
+ */
+const PROXIMITY_RANGE_KM = 500;
 
 /**
  * Threat multipliers by entity type.
@@ -105,12 +119,22 @@ export class ThreatInferenceEngine {
 
     // ─── Factor 3: Proximity Score ─────────────────────────
 
-    let proximityScore = 0.3; // default: unknown proximity
+    // Measured only when both a reference position and the entity's own
+    // position are available; otherwise it stays undefined and is reported as
+    // absent rather than as a number derived from something that is not
+    // distance.
+    let proximityScore: number | undefined;
     if (referenceLatitude !== undefined && referenceLongitude !== undefined) {
-      // Would need actual entity coordinates (not in current GeoEntity model)
-      // For now, use heuristic based on related entities
-      const relatedCount = this.store.getRelationshipsFrom(pluginId, entityId).length;
-      proximityScore = Math.min(0.8, relatedCount * 0.1);
+      const position = getEntityPosition(this.store, pluginId, entityId);
+      if (position) {
+        const distanceKm = haversineDistanceKm(
+          referenceLatitude,
+          referenceLongitude,
+          position.latitude,
+          position.longitude,
+        );
+        proximityScore = Math.max(0, 1 - distanceKm / PROXIMITY_RANGE_KM);
+      }
     }
 
     // ─── Factor 4: Velocity Score ──────────────────────────
@@ -128,7 +152,7 @@ export class ThreatInferenceEngine {
     const combinedScore =
       dispositionScore * THREAT_WEIGHTS.disposition +
       capabilityScore * THREAT_WEIGHTS.capability +
-      proximityScore * THREAT_WEIGHTS.proximity +
+      (proximityScore ?? PROXIMITY_UNKNOWN_PRIOR) * THREAT_WEIGHTS.proximity +
       velocityScore * THREAT_WEIGHTS.velocity;
 
     // ─── Determine Threat Level ────────────────────────────
@@ -167,6 +191,8 @@ export class ThreatInferenceEngine {
       confidenceScore,
       threatFactors: {
         disposition: dispositionScore,
+        // Absent when no distance could be measured — the combined score falls
+        // back to the unknown-proximity prior, which is not a finding.
         proximity: proximityScore,
         capability: capabilityScore,
         velocity: velocityScore,
