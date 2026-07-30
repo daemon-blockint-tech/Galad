@@ -46,7 +46,34 @@ describe("CORS utility", () => {
             expect(headers["Access-Control-Allow-Methods"]).toContain("GET");
             expect(headers["Access-Control-Allow-Methods"]).toContain("POST");
             expect(headers["Access-Control-Allow-Headers"]).toContain("Authorization");
-            expect(headers["Access-Control-Allow-Private-Network"]).toBe("true");
+        });
+
+        it("never sends credentials, which is what makes reflecting any origin safe", () => {
+            const headers = corsHeaders(fakeRequest("http://evil.com"));
+            expect(headers["Access-Control-Allow-Credentials"]).toBeUndefined();
+        });
+
+        it("grants private-network access to local and configured origins", () => {
+            for (const origin of [
+                "http://localhost:3001",
+                "http://192.168.68.53:3001",
+                "http://10.0.0.5:8080",
+                "http://127.0.0.1:4000",
+            ]) {
+                expect(corsHeaders(fakeRequest(origin))["Access-Control-Allow-Private-Network"]).toBe(
+                    "true",
+                );
+            }
+        });
+
+        it("withholds private-network access from public origins", () => {
+            // Otherwise a page on the internet can reach a Galad instance that
+            // only exists inside the user's LAN.
+            for (const origin of ["http://evil.com", "https://attacker.example"]) {
+                expect(
+                    corsHeaders(fakeRequest(origin))["Access-Control-Allow-Private-Network"],
+                ).toBeUndefined();
+            }
         });
     });
 

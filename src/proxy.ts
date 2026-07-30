@@ -4,6 +4,7 @@ import { getToken } from "next-auth/jwt";
 import { isDemo, isPlatformAdmin } from "@/core/edition";
 import { getPublicEdition } from "@/core/grondEnv";
 import { readJsonResponse } from "@/lib/http/readJsonResponse";
+import { internalRequestHeaders } from "@/lib/security/internalRequest";
 
 const workspaceCache = new Map<string, { status: string; expiresAt: number }>();
 const CACHE_TTL = 60_000;
@@ -89,7 +90,7 @@ async function resolveWorkspace(subdomain: string) {
     try {
         const url = new URL(`/api/internal/workspace/${subdomain}`, internalAppUrl());
         const res = await fetch(url.toString(), {
-            headers: { "User-Agent": "Grond-Middleware" },
+            headers: { "User-Agent": "Grond-Middleware", ...internalRequestHeaders() },
             signal: AbortSignal.timeout(SELF_FETCH_TIMEOUT_MS),
         });
 
@@ -127,7 +128,7 @@ async function needsFirstRunSetup(): Promise<boolean> {
     try {
         const url = new URL("/api/auth/setup-status", internalAppUrl());
         const res = await fetch(url.toString(), {
-            headers: { "User-Agent": "Grond-Middleware" },
+            headers: { "User-Agent": "Grond-Middleware", ...internalRequestHeaders() },
             signal: AbortSignal.timeout(SELF_FETCH_TIMEOUT_MS),
         });
         const data = await readJsonResponse<{ needsSetup?: boolean }>(res);

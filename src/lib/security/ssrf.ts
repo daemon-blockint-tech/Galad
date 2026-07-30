@@ -1,11 +1,68 @@
 import dns from "dns/promises";
 import { fetch, Agent } from "undici";
 
+/**
+ * IPv4 ranges that must never be reachable from a user-supplied URL.
+ * Prefix-matching on the dotted string missed several of these — notably
+ * 100.64.0.0/10, which is CGNAT and is Tailscale's entire address space.
+ */
+const BLOCKED_V4_RANGES: ReadonlyArray<readonly [string, number]> = [
+    ["0.0.0.0", 8], // this network
+    ["10.0.0.0", 8], // RFC1918
+    ["100.64.0.0", 10], // CGNAT / Tailscale
+    ["127.0.0.0", 8], // loopback
+    ["169.254.0.0", 16], // link-local, incl. cloud metadata
+    ["172.16.0.0", 12], // RFC1918
+    ["192.0.0.0", 24], // IETF protocol assignments
+    ["192.0.2.0", 24], // TEST-NET-1
+    ["192.168.0.0", 16], // RFC1918
+    ["198.18.0.0", 15], // benchmarking
+    ["198.51.100.0", 24], // TEST-NET-2
+    ["203.0.113.0", 24], // TEST-NET-3
+    ["224.0.0.0", 4], // multicast
+    ["240.0.0.0", 4], // reserved, incl. 255.255.255.255
+];
+
+function toV4Int(ip: string): number | null {
+    const parts = ip.split(".");
+    if (parts.length !== 4) return null;
+    let value = 0;
+    for (const part of parts) {
+        // Reject empty, non-decimal, and zero-padded forms; dns.lookup returns
+        // canonical dotted-quad, so anything else is not an address we resolved.
+        if (!/^\d{1,3}$/.test(part) || (part.length > 1 && part[0] === "0")) return null;
+        const octet = Number(part);
+        if (octet > 255) return null;
+        value = value * 256 + octet;
+    }
+    return value;
+}
+
+/**
+ * True when the address is one a server must not be talked into reaching.
+ * Returns false for hostnames — callers resolve first and re-check the result.
+ */
 export function isPrivateIP(ip: string): boolean {
-    if (/^(127\.|10\.|192\.168\.|169\.254\.|0\.)/.test(ip)) return true;
-    if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(ip)) return true;
-    if (ip === "::1" || ip.toLowerCase().startsWith("fc") || ip.toLowerCase().startsWith("fd") || ip.toLowerCase().startsWith("fe80")) return true;
-    return false;
+    const address = ip.trim().replace(/^\[|\]$/g, "");
+
+    // IPv4-mapped and IPv4-compatible IPv6 (::ffff:127.0.0.1) reach the IPv4 host.
+    const mapped = /^::(?:ffff:)?(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(address);
+    const v4 = toV4Int(mapped ? mapped[1] : address);
+    if (v4 !== null) {
+        return BLOCKED_V4_RANGES.some(([base, bits]) => {
+            const baseInt = toV4Int(base);
+            if (baseInt === null) return false;
+            const mask = bits === 0 ? 0 : (-1 << (32 - bits)) >>> 0;
+            return (v4 & mask) >>> 0 === (baseInt & mask) >>> 0;
+        });
+    }
+
+    if (!address.includes(":")) return false; // a hostname, not an address
+
+    const v6 = address.toLowerCase();
+    if (v6 === "::" || v6 === "::1") return true; // unspecified, loopback
+    // fc00::/7 unique-local, fe80::/10 link-local.
+    return /^f[cd]/.test(v6) || /^fe[89ab]/.test(v6);
 }
 
 export function validateOrigin(urlStr: string): boolean {
