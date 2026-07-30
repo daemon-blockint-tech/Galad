@@ -4,7 +4,7 @@
  * Intelligently routes, enriches, and aggregates alerts across the system.
  */
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@/generated/prisma';
 import { SemanticStore } from '@/core/semantic/semanticStore';
 import { levenshteinDistance } from '@/lib/utils/stringDistance';
 
@@ -75,7 +75,7 @@ export class AlertOrchestrator {
     this.routes = [
       {
         name: 'critical-immediate',
-        condition: (alert) => alert.severity === 'critical' && alert.escalationLevel < 2,
+        condition: (alert) => alert.severity === 'critical' && alert.escalationLevel <= 2,
         targets: ['pagerduty', 'slack'],
         delayMs: 0,
       },

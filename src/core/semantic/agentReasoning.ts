@@ -280,7 +280,7 @@ export class SemanticAgent {
     decisionsCount: number;
     threatsDetected: number;
   }> {
-    const startTime = Date.now();
+    const startTime = performance.now();
 
     // Perceive
     await this.perceive();
@@ -297,7 +297,7 @@ export class SemanticAgent {
     // Prune old data
     this.context.prune(3600);
 
-    const cycleTimeMs = Date.now() - startTime;
+    const cycleTimeMs = performance.now() - startTime;
     const threats = this.context.getActivethreats();
 
     return {

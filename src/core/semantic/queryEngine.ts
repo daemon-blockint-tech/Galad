@@ -302,8 +302,10 @@ export class SemanticQueryEngine {
     else if (cls?.disposition === 'neutral') hostilityScore = 0.3;
     else hostilityScore = 0.5; // unknown
 
-    // Proximity score (would use actual locations)
-    let proximityScore = 0;
+    // Proximity score (would use actual locations).
+    // Unknown proximity is a neutral prior, not "definitely far" — a 0 here
+    // silently deflates the weighted sum by the full proximity weight.
+    let proximityScore = 0.3;
     if (query.referenceLatitude && query.referenceLongitude) {
       // TODO: calculate actual distance
       proximityScore = 0.5;
@@ -344,24 +346,8 @@ export class SemanticQueryEngine {
   aggregateContext(query: AggregateContextQuery): ContextAggregationResult {
     const cls = this.store.getClassification(query.entityPluginId, query.entityId);
 
-    if (!cls) {
-      return {
-        entityPluginId: query.entityPluginId,
-        entityId: query.entityId,
-        summary: {
-          type: 'unknown',
-          classification: undefined,
-        },
-        relatedByType: {},
-        relatedByRelationship: {},
-        threatLandscape: {
-          hostileCount: 0,
-          friendlyCount: 0,
-          neutralCount: 0,
-          criticalThreats: [],
-        },
-      };
-    }
+    // An unclassified entity still has a relationship graph and a threat
+    // landscape — only its own summary is unknown.
 
     const relatedByRelationship: Record<string, QueryResultEntity[]> = {};
     const relatedByType: Record<EntityType, QueryResultEntity[]> = {} as Record<EntityType, QueryResultEntity[]>;
@@ -424,13 +410,15 @@ export class SemanticQueryEngine {
       entityPluginId: query.entityPluginId,
       entityId: query.entityId,
       summary: {
-        type: cls.type,
-        classification: {
-          type: cls.type,
-          domain: cls.domain,
-          disposition: cls.disposition,
-          confidence: cls.confidence,
-        },
+        type: cls?.type ?? 'unknown',
+        classification: cls
+          ? {
+            type: cls.type,
+            domain: cls.domain,
+            disposition: cls.disposition,
+            confidence: cls.confidence,
+          }
+          : undefined,
       },
       relatedByType,
       relatedByRelationship,

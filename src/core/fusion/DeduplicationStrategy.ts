@@ -59,7 +59,9 @@ export class SpatialProximityStrategy extends DeduplicationStrategy {
       spatialScore,
       semanticScore,
       temporalScore,
-      overallScore: spatialScore * 0.7 + temporalScore * 0.3,
+      // No spatial evidence (out of range or missing coords) => no proximity
+      // match, regardless of the neutral temporal prior.
+      overallScore: spatialScore === 0 ? 0 : spatialScore * 0.7 + temporalScore * 0.3,
     };
   }
 
@@ -176,47 +178,55 @@ export class SemanticNameStrategy extends DeduplicationStrategy {
     const similarity = this.levenshteinSimilarity(label1, label2);
     if (similarity < this.minSimilarity) return 0;
 
-    // Type matching bonus
+    // Type/disposition agreement: bonus when both are known and equal,
+    // penalty when both are known and differ (a vessel and an aircraft are
+    // not the same contact however identical their labels).
     const typeMatch =
-      e1.type && e2.type && e1.type === e2.type ? 0.2 : 0;
+      e1.type && e2.type ? (e1.type === e2.type ? 0.2 : -0.2) : 0;
     const dispositionMatch =
-      e1.disposition &&
-      e2.disposition &&
-      e1.disposition === e2.disposition
-        ? 0.1
+      e1.disposition && e2.disposition
+        ? e1.disposition === e2.disposition
+          ? 0.1
+          : -0.1
         : 0;
 
-    return Math.min(1, similarity + typeMatch + dispositionMatch);
+    return Math.max(0, Math.min(1, similarity + typeMatch + dispositionMatch));
   }
 
   private levenshteinSimilarity(s1: string, s2: string): number {
-    const distance = this.levenshteinDistance(s1, s2);
     const maxLen = Math.max(s1.length, s2.length);
+    // Edit distance is at least the length difference, so a length gap alone
+    // can rule the pair out before doing the O(n·m) work.
+    if (1 - Math.abs(s1.length - s2.length) / maxLen < this.minSimilarity) {
+      return 0;
+    }
+    const distance = this.levenshteinDistance(s1, s2);
     return 1 - distance / maxLen;
   }
 
   private levenshteinDistance(s1: string, s2: string): number {
     const len1 = s1.length;
     const len2 = s2.length;
-    const matrix = Array(len1 + 1)
-      .fill(null)
-      .map(() => Array(len2 + 1).fill(0));
 
-    for (let i = 0; i <= len1; i++) matrix[i][0] = i;
-    for (let j = 0; j <= len2; j++) matrix[0][j] = j;
+    // Two rolling rows instead of a full matrix: this runs on every candidate
+    // pair (O(n²) pairs), so the per-call allocation is what costs.
+    let prev = Array.from({ length: len2 + 1 }, (_, j) => j);
+    let curr = new Array<number>(len2 + 1);
 
     for (let i = 1; i <= len1; i++) {
+      curr[0] = i;
       for (let j = 1; j <= len2; j++) {
         const cost = s1[i - 1] === s2[j - 1] ? 0 : 1;
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j] + 1, // deletion
-          matrix[i][j - 1] + 1, // insertion
-          matrix[i - 1][j - 1] + cost, // substitution
+        curr[j] = Math.min(
+          prev[j] + 1, // deletion
+          curr[j - 1] + 1, // insertion
+          prev[j - 1] + cost, // substitution
         );
       }
+      [prev, curr] = [curr, prev];
     }
 
-    return matrix[len1][len2];
+    return prev[len2];
   }
 }
 

@@ -389,11 +389,16 @@ export class FusionEngine {
   }
 
   private getAllEntities(): Entity[] {
-    // Extract all entities from semantic store
-    const entities: Entity[] = [];
-
-    // This would iterate through the store's internal maps
-    // For now, returning empty - to be implemented with actual store integration
-    return entities;
+    // Entities live in the store's cache; classification (type/disposition)
+    // is stored separately and the strategies need it.
+    return this.store.getAllEntities().map((e) => {
+      const cls = this.store.getClassification(e.pluginId, e.entityId);
+      return {
+        id: `${e.pluginId}|${e.entityId}`,
+        ...e,
+        type: e.type ?? cls?.type,
+        disposition: e.disposition ?? cls?.disposition,
+      };
+    });
   }
 }

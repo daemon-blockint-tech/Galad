@@ -4,12 +4,53 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { AlertOrchestrator, AlertInput, Alert } from './AlertOrchestrator';
+import { PrismaClient } from '@/generated/prisma';
+import { AlertOrchestrator, AlertInput } from './AlertOrchestrator';
 import { SemanticStore } from '@/core/semantic/semanticStore';
+
+/**
+ * In-memory stand-in for the Prisma alert tables. Only the surface the
+ * orchestrator touches is implemented: alert.create/findMany/findUnique/update
+ * and alertEvent.create.
+ */
+function createMockDb() {
+  const alerts = new Map<string, any>();
+
+  return {
+    alert: {
+      create: vi.fn(async ({ data }: any) => {
+        alerts.set(data.id, { ...data });
+        return { ...alerts.get(data.id) };
+      }),
+      findMany: vi.fn(async ({ where = {} }: any = {}) =>
+        Array.from(alerts.values())
+          .filter((a) => {
+            if (where.tenantId !== undefined && a.tenantId !== where.tenantId) return false;
+            if (where.status !== undefined && a.status !== where.status) return false;
+            if (where.severity !== undefined && a.severity !== where.severity) return false;
+            if (where.lastSeen?.gte && a.lastSeen < where.lastSeen.gte) return false;
+            return true;
+          })
+          .map((a) => ({ ...a })),
+      ),
+      findUnique: vi.fn(async ({ where }: any) => (alerts.has(where.id) ? { ...alerts.get(where.id) } : null)),
+      update: vi.fn(async ({ where, data }: any) => {
+        const existing = alerts.get(where.id);
+        if (!existing) throw new Error(`Alert not found: ${where.id}`);
+        Object.assign(existing, data);
+        return { ...existing };
+      }),
+    },
+    alertEvent: {
+      create: vi.fn(async () => ({})),
+    },
+  };
+}
 
 describe('AlertOrchestrator', () => {
   let orchestrator: AlertOrchestrator;
   let mockStore: Partial<SemanticStore>;
+  let mockDb: ReturnType<typeof createMockDb>;
 
   beforeEach(() => {
     mockStore = {
@@ -31,7 +72,8 @@ describe('AlertOrchestrator', () => {
       })),
     };
 
-    orchestrator = new AlertOrchestrator(mockStore as SemanticStore);
+    mockDb = createMockDb();
+    orchestrator = new AlertOrchestrator(mockStore as SemanticStore, mockDb as unknown as PrismaClient);
   });
 
   describe('ingestAlert', () => {
@@ -260,9 +302,9 @@ describe('AlertOrchestrator', () => {
       };
 
       const alert = await orchestrator.ingestAlert(input);
-      orchestrator.resolveAlert(alert.id);
+      await orchestrator.resolveAlert(alert.id);
 
-      const active = orchestrator.getActiveAlerts();
+      const active = await orchestrator.getActiveAlerts();
       expect(active).not.toContainEqual(expect.objectContaining({ id: alert.id }));
     });
 
@@ -279,14 +321,14 @@ describe('AlertOrchestrator', () => {
       };
 
       const alert = await orchestrator.ingestAlert(input);
-      orchestrator.suppressAlert(alert.id, 100);
+      await orchestrator.suppressAlert(alert.id, 100);
 
-      let active = orchestrator.getActiveAlerts();
+      let active = await orchestrator.getActiveAlerts();
       expect(active).not.toContainEqual(expect.objectContaining({ id: alert.id }));
 
       await new Promise((resolve) => setTimeout(resolve, 150));
 
-      active = orchestrator.getActiveAlerts();
+      active = await orchestrator.getActiveAlerts();
       expect(active).toContainEqual(expect.objectContaining({ id: alert.id }));
     });
 
@@ -316,7 +358,7 @@ describe('AlertOrchestrator', () => {
       await orchestrator.ingestAlert(input1);
       await orchestrator.ingestAlert(input2);
 
-      const critical = orchestrator.getActiveAlerts('critical');
+      const critical = await orchestrator.getActiveAlerts('critical');
       expect(critical).toHaveLength(1);
       expect(critical[0].severity).toBe('critical');
     });
@@ -347,7 +389,7 @@ describe('AlertOrchestrator', () => {
       await orchestrator.ingestAlert(input1);
       await orchestrator.ingestAlert(input2);
 
-      const stats = orchestrator.getStats();
+      const stats = await orchestrator.getStats();
       expect(stats.activeCount).toBe(1);
       expect(stats.criticalCount).toBe(1);
       expect(stats.totalDeduplicatedFrom).toBe(1); // 2 alerts merged into 1

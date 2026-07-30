@@ -6,7 +6,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { SemanticStore } from './semanticStore';
 import { SemanticQueryEngine } from './queryEngine';
-import type { EntityClassification, SemanticRelationship } from '@maven-system/plugin-sdk';
+import type { EntityClassification } from '@maven-system/plugin-sdk';
 
 describe('SemanticQueryEngine', () => {
   let store: SemanticStore;
@@ -47,21 +47,8 @@ describe('SemanticQueryEngine', () => {
     store.setClassification('maritime', 'ship-1', maritimeVessel);
 
     // Add relationships
-    store.addRelationship({
-      sourceId: 'military:unit-1',
-      targetId: 'aviation:aircraft-1',
-      relationshipType: 'controls',
-      confidence: 0.9,
-      establishedAt: Date.now(),
-    });
-
-    store.addRelationship({
-      sourceId: 'military:unit-1',
-      targetId: 'aviation:aircraft-2',
-      relationshipType: 'controls',
-      confidence: 0.85,
-      establishedAt: Date.now(),
-    });
+    store.addRelationship('military', 'unit-1', 'aviation', 'aircraft-1', 'controls', 0.9);
+    store.addRelationship('military', 'unit-1', 'aviation', 'aircraft-2', 'controls', 0.85);
   });
 
   describe('find_by_type', () => {
