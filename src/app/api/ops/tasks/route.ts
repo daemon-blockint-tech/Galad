@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getOpsUserId } from "@/lib/ops/session";
-import { agentBus } from "@/lib/agent/bus";
+import { createOpsTask, OPS_TASK_TITLE_MAX } from "@/lib/ops/tasks";
 
 /**
  * GET /api/ops/tasks — list tasks for the current user.
@@ -37,32 +37,20 @@ export async function POST(request: Request) {
         if (!title) {
             return NextResponse.json({ error: "Title is required" }, { status: 400 });
         }
+        if (title.length > OPS_TASK_TITLE_MAX) {
+            return NextResponse.json(
+                { error: `Title must be ${OPS_TASK_TITLE_MAX} characters or fewer` },
+                { status: 400 },
+            );
+        }
 
-        const task = await prisma.opsTask.create({
-            data: {
-                userId,
-                title,
-                status: "active",
-                entityPluginId: body.entityPluginId ?? null,
-                entityId: body.entityId ?? null,
-                lat: typeof body.lat === "number" ? body.lat : null,
-                lon: typeof body.lon === "number" ? body.lon : null,
-            },
-        });
-
-        agentBus.publish(userId, {
-            action: "task_created",
-            task: {
-                id: task.id,
-                title: task.title,
-                status: task.status as "active",
-                entityPluginId: task.entityPluginId,
-                entityId: task.entityId,
-                lat: task.lat,
-                lon: task.lon,
-                createdAt: task.createdAt.toISOString(),
-                updatedAt: task.updatedAt.toISOString(),
-            },
+        const task = await createOpsTask({
+            userId,
+            title,
+            entityPluginId: typeof body.entityPluginId === "string" ? body.entityPluginId : undefined,
+            entityId: typeof body.entityId === "string" ? body.entityId : undefined,
+            lat: typeof body.lat === "number" ? body.lat : undefined,
+            lon: typeof body.lon === "number" ? body.lon : undefined,
         });
 
         return NextResponse.json({ task });

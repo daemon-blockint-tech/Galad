@@ -18,10 +18,18 @@
  * target — extending this is straightforward when needed.
  */
 
+export const OPS_TASK_STATUSES = ["active", "completed", "cancelled"] as const;
+
+export type OpsTaskStatus = (typeof OPS_TASK_STATUSES)[number];
+
+export function isOpsTaskStatus(value: unknown): value is OpsTaskStatus {
+    return (OPS_TASK_STATUSES as readonly unknown[]).includes(value);
+}
+
 export type OpsTaskPayload = {
     id: string;
     title: string;
-    status: "active" | "completed" | "cancelled";
+    status: OpsTaskStatus;
     entityPluginId?: string | null;
     entityId?: string | null;
     lat?: number | null;

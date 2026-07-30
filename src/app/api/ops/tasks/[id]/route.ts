@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getOpsUserId } from "@/lib/ops/session";
-import { agentBus } from "@/lib/agent/bus";
+import { agentBus, isOpsTaskStatus, type OpsTaskStatus } from "@/lib/agent/bus";
+import { OPS_TASK_TITLE_MAX, toOpsTaskPayload } from "@/lib/ops/tasks";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -18,8 +19,32 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     try {
         const body = await request.json();
-        const status = body.status as string | undefined;
+
+        if (body.status !== undefined && !isOpsTaskStatus(body.status)) {
+            return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+        }
+        const status: OpsTaskStatus | undefined = body.status;
+
         const title = typeof body.title === "string" ? body.title.trim() : undefined;
+        if (body.title !== undefined && !title) {
+            return NextResponse.json(
+                { error: "Title must be a non-empty string" },
+                { status: 400 },
+            );
+        }
+        if (title && title.length > OPS_TASK_TITLE_MAX) {
+            return NextResponse.json(
+                { error: `Title must be ${OPS_TASK_TITLE_MAX} characters or fewer` },
+                { status: 400 },
+            );
+        }
+
+        if (status === undefined && title === undefined) {
+            return NextResponse.json(
+                { error: "Provide status or title to update" },
+                { status: 400 },
+            );
+        }
 
         const existing = await prisma.opsTask.findFirst({ where: { id, userId } });
         if (!existing) {
@@ -34,20 +59,7 @@ export async function PATCH(request: Request, context: RouteContext) {
             },
         });
 
-        agentBus.publish(userId, {
-            action: "task_updated",
-            task: {
-                id: task.id,
-                title: task.title,
-                status: task.status as "active" | "completed" | "cancelled",
-                entityPluginId: task.entityPluginId,
-                entityId: task.entityId,
-                lat: task.lat,
-                lon: task.lon,
-                createdAt: task.createdAt.toISOString(),
-                updatedAt: task.updatedAt.toISOString(),
-            },
-        });
+        agentBus.publish(userId, { action: "task_updated", task: toOpsTaskPayload(task) });
 
         return NextResponse.json({ task });
     } catch (e) {
