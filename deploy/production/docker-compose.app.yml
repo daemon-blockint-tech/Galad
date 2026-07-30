@@ -10,7 +10,7 @@ services:
       - path: .env
         required: false
     environment:
-      - "AUTH_SECRET=${AUTH_SECRET:-default_secret_for_local_dev}"
+      - "AUTH_SECRET=${AUTH_SECRET:?AUTH_SECRET must be set - generate one with 'openssl rand -hex 32' and set it in the host environment or .env}"
       - "WWV_DEMO_ADMIN_SECRET=${WWV_DEMO_ADMIN_SECRET:-}"
       - "WWV_BRIDGE_TOKEN=${WWV_BRIDGE_TOKEN:-}"
       - "DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@db:5432/worldwideview?schema=public}"

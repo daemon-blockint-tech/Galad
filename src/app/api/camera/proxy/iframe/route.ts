@@ -3,8 +3,19 @@ import { auth } from "@/lib/auth";
 import { isAuthEnabled } from "@/core/edition";
 import { cameraProxyLimiter } from "@/lib/rateLimiters";
 import { getClientIp } from "@/lib/rateLimit";
+import { safeFetch } from "@/lib/security/ssrf";
 
 const MAX_IFRAME_DURATION_MS = 10 * 1000; // 10 seconds timeout for HTML
+const MAX_IFRAME_BYTES = 5 * 1024 * 1024;
+
+/** Escapes a URL for use inside a double-quoted HTML attribute. */
+function escapeAttribute(value: string): string {
+    return value
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+}
 
 /**
  * Proxy for iframe HTML pages.
@@ -28,13 +39,14 @@ export async function GET(req: NextRequest) {
     }
 
     try {
-        const upstream = await fetch(targetUrl, {
+        const upstream = await safeFetch(targetUrl, {
             headers: {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
                 "Accept-Language": "en-US,en;q=0.5",
             },
-            signal: AbortSignal.timeout(MAX_IFRAME_DURATION_MS),
+            timeout: MAX_IFRAME_DURATION_MS,
+            maxSize: MAX_IFRAME_BYTES,
         });
 
         if (!upstream.ok) {
@@ -53,6 +65,8 @@ export async function GET(req: NextRequest) {
                 headers: {
                     "Content-Type": contentType,
                     "Cache-Control": "no-store",
+                    "X-Content-Type-Options": "nosniff",
+                    "Content-Security-Policy": "sandbox allow-scripts",
                     "Access-Control-Allow-Origin": "*",
                 },
             });
@@ -61,7 +75,7 @@ export async function GET(req: NextRequest) {
         let html = await upstream.text();
 
         // Inject <base href="..."> right after <head> or at the very beginning of the document
-        const baseTag = `<base href="${targetUrl}">\n`;
+        const baseTag = `<base href="${escapeAttribute(targetUrl)}">\n`;
         if (html.includes("<head>")) {
             html = html.replace("<head>", `<head>\n${baseTag}`);
         } else if (html.includes("<HEAD>")) {
@@ -76,6 +90,11 @@ export async function GET(req: NextRequest) {
                 "Content-Type": contentType,
                 "Cache-Control": "no-store",
                 "X-Content-Type-Options": "nosniff",
+                // The upstream document is served from this app's origin, so its
+                // scripts would otherwise run with access to our cookies and
+                // storage. `sandbox` without allow-same-origin forces an opaque
+                // origin; allow-scripts keeps camera viewers working.
+                "Content-Security-Policy": "sandbox allow-scripts",
                 "Access-Control-Allow-Origin": "*",
                 "Access-Control-Allow-Methods": "GET, OPTIONS",
             },
@@ -83,9 +102,10 @@ export async function GET(req: NextRequest) {
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Unknown error";
         console.error("[IframeProxy] Error:", message);
+        const status = message.includes("SSRF Error") ? 403 : 502;
         return NextResponse.json(
-            { error: "Failed to proxy iframe" },
-            { status: 502 },
+            { error: message || "Failed to proxy iframe" },
+            { status },
         );
     }
 }

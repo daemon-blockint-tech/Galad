@@ -1,104 +1,83 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
+import { isAuthEnabled } from "@/core/edition";
+import { cameraProxyLimiter } from "@/lib/rateLimiters";
+import { getClientIp } from "@/lib/rateLimit";
+import { safeFetch } from "@/lib/security/ssrf";
 
-const BLOCKED_HOSTS = ["localhost", "127.0.0.1", "::1", "metadata.google.internal"];
-const TIMEOUT_MS = 30000;
+const TIMEOUT_MS = 30_000;
 
-function isPrivateUrl(urlStr: string): boolean {
-    try {
-        const parsed = new URL(urlStr);
-        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return true;
-        const host = parsed.hostname;
-
-        // If developer overrides local restrictions, bypass checks
-        if (process.env.WWV_PROXY_ALLOW_LOCAL === "true") return false;
-
-        if (BLOCKED_HOSTS.includes(host)) return true;
-
-        const parts = host.split(".").map(Number);
-        if (parts.length === 4 && parts.every((n) => !isNaN(n))) {
-            if (parts[0] === 10) return true;
-            if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
-            if (parts[0] === 192 && parts[1] === 168) return true;
-            if (parts[0] === 169 && parts[1] === 254) return true;
-            if (parts[0] === 0) return true;
-        }
-        return false;
-    } catch {
-        return true;
-    }
-}
-
+/**
+ * Reachability probe for a camera stream URL.
+ *
+ * `safeFetch` is the guard that matters here: https-only, private IPs rejected
+ * before *and* after DNS resolution, and the connection pinned to the resolved
+ * address — so the probe cannot be aimed at the deploy network. The error
+ * branches deliberately return one generic message: echoing the underlying
+ * socket error code turns this route into an open/closed/filtered port-scan
+ * oracle.
+ */
 export async function GET(req: NextRequest) {
+    const rateLimited = cameraProxyLimiter.check(getClientIp(req));
+    if (rateLimited) return rateLimited;
+
+    if (isAuthEnabled) {
+        const session = await auth();
+        if (!session?.user) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+    }
+
     const url = req.nextUrl.searchParams.get("url");
     if (!url) {
         return NextResponse.json({ status: "error", error: "Missing url parameter" }, { status: 400 });
     }
 
-    if (isPrivateUrl(url)) {
-        return NextResponse.json({ status: "error", error: "Private URL not allowed" }, { status: 403 });
-    }
+    const probe = (method: string) => safeFetch(url, {
+        method,
+        headers: { "User-Agent": "Grond/1.0" },
+        timeout: TIMEOUT_MS,
+    });
 
     const startTime = Date.now();
     try {
-        let response;
+        let response: Response;
         try {
-            response = await fetch(url, {
-                method: "HEAD",
-                headers: { "User-Agent": "Grond/1.0" },
-                signal: AbortSignal.timeout(TIMEOUT_MS)
-            });
-        } catch (headError: any) {
-            // Primitive IP camera servers (like Insecam sources) often aggressively drop the TCP connection
-            // instead of returning 405 when they see an unsupported HTTP method like HEAD.
-            // If the socket was closed unexpectedly, retry with GET.
-            if (headError.cause?.code === 'UND_ERR_SOCKET' || headError.message?.includes('fetch failed')) {
-                response = await fetch(url, {
-                    method: "GET",
-                    headers: { "User-Agent": "Grond/1.0" },
-                    signal: AbortSignal.timeout(TIMEOUT_MS)
-                });
-            } else {
-                throw headError;
-            }
+            response = await probe("HEAD");
+        } catch (headError: unknown) {
+            // Primitive IP camera servers (like Insecam sources) often aggressively drop the TCP
+            // connection instead of returning 405 when they see an unsupported HTTP method like
+            // HEAD. If the socket was closed unexpectedly, retry with GET.
+            const headMessage = headError instanceof Error ? headError.message : "";
+            if (!headMessage.includes("fetch failed")) throw headError;
+            response = await probe("GET");
         }
 
-        // If HEAD completes but with 405 (Method Not Allowed) or 403, try GET but abort body
+        // If HEAD completes but with 405 (Method Not Allowed) or 403, try GET instead.
         if (response.status === 405 || response.status === 403) {
-            const getRes = await fetch(url, {
-                method: "GET",
-                headers: { "User-Agent": "Grond/1.0" },
-                signal: AbortSignal.timeout(TIMEOUT_MS)
-            });
-            return NextResponse.json({
-                status: getRes.status,
-                contentType: getRes.headers.get("content-type"),
-                latencyMs: Date.now() - startTime
-            });
+            void response.body?.cancel();
+            response = await probe("GET");
         }
 
-        return NextResponse.json({
+        const result = NextResponse.json({
             status: response.status,
             contentType: response.headers.get("content-type"),
-            latencyMs: Date.now() - startTime
+            latencyMs: Date.now() - startTime,
         });
-    } catch (error: any) {
-        const realError = error.cause || error;
-        const code = realError?.code || error?.code || realError?.name || error?.name;
+        // Nothing reads the body — release the socket rather than holding an
+        // open MJPEG stream for the life of the process.
+        void response.body?.cancel();
+        return result;
+    } catch (error: unknown) {
+        const latencyMs = Date.now() - startTime;
+        const message = error instanceof Error ? error.message : "Unknown error";
 
-        let displayError = error?.message || "Unknown error";
-        if (code && code !== 'TypeError' && code !== 'Error') {
-            displayError = `[${code}] ${realError?.message || error?.message || ""}`;
+        if (message.includes("SSRF Error")) {
+            return NextResponse.json({ status: "error", error: message, latencyMs }, { status: 403 });
         }
-
-        // Make sure we don't accidentally categorize a malformed HTTP response as a timeout
-        if (code === "ERR_INVALID_HTTP_RESPONSE" || code === "HPE_INVALID_CONSTANT") {
-            return NextResponse.json({ status: "error", error: displayError, latencyMs: Date.now() - startTime });
+        if (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError")) {
+            return NextResponse.json({ status: "timeout", error: "Connection timed out", latencyMs });
         }
-
-        if (error?.name === "TimeoutError" || displayError.includes("timeout") || code === "UND_ERR_CONNECT_TIMEOUT") {
-            return NextResponse.json({ status: "timeout", error: "Connection timed out", latencyMs: Date.now() - startTime });
-        }
-
-        return NextResponse.json({ status: "error", error: displayError, latencyMs: Date.now() - startTime });
+        return NextResponse.json({ status: "error", error: "Request failed", latencyMs });
     }
 }

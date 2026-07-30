@@ -1,7 +1,7 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import { headers } from "next/headers";
-import { PrismaClient } from "../generated/prisma";
+import { Prisma, PrismaClient } from "../generated/prisma";
 
 /**
  * Prisma client singleton — PostgreSQL only.
@@ -15,6 +15,18 @@ import { PrismaClient } from "../generated/prisma";
 const globalForPrisma = globalThis as unknown as {
     prisma: PrismaClient | undefined;
 };
+
+/**
+ * Models carrying a `tenantId` column, read from the schema rather than listed
+ * by hand. Injecting `tenantId` into a model without that column makes Prisma
+ * reject the whole query, so this set must never drift from the datamodel —
+ * `OpsTask` and `OpsAlert` are scoped by `userId` through the tenanted `User`.
+ */
+export const TENANT_SCOPED_MODELS = new Set(
+    Prisma.dmmf.datamodel.models
+        .filter((model) => model.fields.some((field) => field.name === "tenantId"))
+        .map((model) => model.name),
+);
 
 function applyTenantIsolation(client: any) {
     // Use Prisma Client Extension to inject RLS
@@ -32,7 +44,7 @@ function applyTenantIsolation(client: any) {
                         // Not in a request context (e.g. scripts, background jobs)
                     }
 
-                    if (tenantSubdomain && model !== 'Workspace' && model !== 'WorkspaceMember') {
+                    if (tenantSubdomain && TENANT_SCOPED_MODELS.has(model)) {
                         args = args || {};
 
                         // Inject into data for creates

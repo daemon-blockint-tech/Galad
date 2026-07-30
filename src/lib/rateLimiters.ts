@@ -17,6 +17,12 @@ export const cameraProxyLimiter = new RateLimiter({
     maxRequests: 30,
 });
 
+/** /api/places/* — prevents billing abuse of the operator's Google Maps key. */
+export const placesLimiter = new RateLimiter({
+    windowMs: 60_000,
+    maxRequests: 30,
+});
+
 /** /api/marketplace/install-redirect — prevents install spam. */
 export const installLimiter = new RateLimiter({
     windowMs: 60_000,

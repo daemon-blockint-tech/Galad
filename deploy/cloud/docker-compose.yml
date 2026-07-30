@@ -1,3 +1,5 @@
+# Interpolated from a `.env` next to this file — `cp .env.example .env` first.
+# That `.env` is gitignored; never commit it once it holds real keys.
 services:
   db:
     image: postgres:15-alpine
@@ -21,7 +23,7 @@ services:
       NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL:-http://dummy}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-dummy}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-dummy}
-      AUTH_SECRET: ${AUTH_SECRET:-dummy_secret_for_local_testing_only_1234567890}
+      AUTH_SECRET: "${AUTH_SECRET:?AUTH_SECRET must be set - generate one with 'openssl rand -hex 32' and set it in .env (see .env.example)}"
     ports:
       - "3001:3000"
     labels:

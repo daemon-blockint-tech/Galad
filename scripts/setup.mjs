@@ -15,9 +15,23 @@ const ROOT = resolve(import.meta.dirname, "..");
 const EXAMPLE = resolve(ROOT, ".env.example");
 const TARGET = resolve(ROOT, ".env");
 
+const secret = randomBytes(32).toString("hex");
+
 if (existsSync(TARGET)) {
-    console.log("✅ .env already exists — skipping setup.");
-    console.log("   Delete it and re-run if you want to regenerate.");
+    const current = readFileSync(TARGET, "utf8");
+    if (/^AUTH_SECRET=.+$/m.test(current)) {
+        console.log("✅ .env already exists — skipping setup.");
+        console.log("   Delete it and re-run if you want to regenerate.");
+        process.exit(0);
+    }
+    // .env exists but carries no usable AUTH_SECRET (e.g. copied straight from
+    // .env.example). Fill it in — there is no default and docker compose aborts
+    // without it.
+    const patched = /^#?\s*AUTH_SECRET=.*$/m.test(current)
+        ? current.replace(/^#?\s*AUTH_SECRET=.*$/m, `AUTH_SECRET=${secret}`)
+        : `${current}\nAUTH_SECRET=${secret}\n`;
+    writeFileSync(TARGET, patched, "utf8");
+    console.log("✅ Existing .env had no AUTH_SECRET — generated one.");
     process.exit(0);
 }
 
@@ -26,7 +40,6 @@ if (!existsSync(EXAMPLE)) {
     process.exit(1);
 }
 
-const secret = randomBytes(32).toString("hex");
 let content = readFileSync(EXAMPLE, "utf8");
 
 // Fill in the AUTH_SECRET line

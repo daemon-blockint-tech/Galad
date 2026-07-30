@@ -18,6 +18,7 @@ WorldWideView utilizes a containerized deployment strategy based on Docker's mul
 ### Coolify Integration
 WorldWideView deploys optimally to Coolify using a Dockerfile builder.
 - **Environment Variables:** Must be explicitly mapped in the Coolify UI (e.g., `DATABASE_URL`, `AUTH_SECRET`).
+- **`AUTH_SECRET` is mandatory and has no default.** It signs session cookies and marketplace JWTs, and (per ADR-0001) derives the key used to encrypt stored OAuth credentials. Generate one with `openssl rand -hex 32` and keep it stable across deploys. Every compose file in `deploy/`, `self-host/` and the repo root uses `${AUTH_SECRET:?...}`, so a deploy with the variable unset or empty aborts instead of booting on a shared constant.
 - **Persistent Storage:** PostgreSQL databases must be hosted externally or mounted via persistent volumes to ensure the frontend registry (installed plugins, user configs) survives container rebuilds.
 - **Seeder Deployment:** The generic `wwv-data-engine-v2` runner is deployed as a Coolify service, reading plugin seeders dynamically from a volume-mounted directory. Seeders are pulled from private/community repositories via GitHub releases, maintaining strict namespace separation between community and private plugins.
 

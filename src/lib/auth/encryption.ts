@@ -5,8 +5,33 @@ const ITERATIONS = 100000;
 const KEY_LENGTH = 32;
 const DIGEST = "sha256";
 
-// In production, this should be set in the environment
-const MASTER_KEY = process.env.ENCRYPTION_MASTER_KEY || "00000000000000000000000000000000";
+let ephemeralKey: string | undefined;
+
+/**
+ * Key material for credential encryption. Per ADR-0001 the key is derived from
+ * `AUTH_SECRET`; `ENCRYPTION_MASTER_KEY` overrides it when an operator wants a
+ * separate key. Read at call time, never at module load, so `next build` (which
+ * runs without runtime secrets) is unaffected — same approach as src/lib/db.ts.
+ *
+ * There is deliberately no hardcoded fallback: a published constant would make
+ * every stored credential readable by anyone with the repo.
+ */
+function getMasterKey(): string {
+    const key = process.env.ENCRYPTION_MASTER_KEY || process.env.AUTH_SECRET;
+    if (key) return key;
+
+    if (process.env.NODE_ENV === "production") {
+        throw new Error("[encryption] AUTH_SECRET (or ENCRYPTION_MASTER_KEY) is not set — refusing to encrypt credentials with a default key.");
+    }
+
+    // Dev/test only: a random per-process key. Anything written with it becomes
+    // unreadable after a restart, which is the intended loud-ish failure.
+    if (!ephemeralKey) {
+        ephemeralKey = crypto.randomBytes(KEY_LENGTH).toString("hex");
+        console.warn("[encryption] AUTH_SECRET is not set — using an ephemeral key. Stored credentials will not survive a restart.");
+    }
+    return ephemeralKey;
+}
 
 export interface EncryptedCredential {
     version: string;
@@ -18,7 +43,7 @@ export interface EncryptedCredential {
 export async function encryptCredential(plainText: string): Promise<EncryptedCredential> {
     return new Promise((resolve, reject) => {
         const salt = crypto.randomBytes(16);
-        crypto.pbkdf2(MASTER_KEY, salt, ITERATIONS, KEY_LENGTH, DIGEST, (err, key) => {
+        crypto.pbkdf2(getMasterKey(), salt, ITERATIONS, KEY_LENGTH, DIGEST, (err, key) => {
             if (err) return reject(err);
 
             const nonce = crypto.randomBytes(12);
@@ -54,7 +79,7 @@ export async function decryptCredential(cred: EncryptedCredential): Promise<stri
         const ciphertext = payloadParts[0];
         const authTag = Buffer.from(payloadParts[1], "base64");
 
-        crypto.pbkdf2(MASTER_KEY, salt, ITERATIONS, KEY_LENGTH, DIGEST, (err, key) => {
+        crypto.pbkdf2(getMasterKey(), salt, ITERATIONS, KEY_LENGTH, DIGEST, (err, key) => {
             if (err) return reject(err);
 
             try {

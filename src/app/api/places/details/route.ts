@@ -1,10 +1,27 @@
 import { NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
+import { isAuthEnabled } from "@/core/edition";
+import { placesLimiter } from "@/lib/rateLimiters";
+import { getClientIp } from "@/lib/rateLimit";
 
-// Server-side cache: keyed by place_id, 24-hour TTL (place geometry is stable)
+// Server-side cache: keyed by place_id, 24-hour TTL (place geometry is stable),
+// bounded so an attacker-controlled key space cannot grow the process heap without limit.
 const cache = new Map<string, { data: unknown; expiresAt: number }>();
 const TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const MAX_CACHE_ENTRIES = 1000;
+const UPSTREAM_TIMEOUT_MS = 10_000;
 
 export async function GET(request: Request) {
+    const rateLimited = placesLimiter.check(getClientIp(request));
+    if (rateLimited) return rateLimited;
+
+    if (isAuthEnabled) {
+        const session = await auth();
+        if (!session?.user) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+    }
+
     const { searchParams } = new URL(request.url);
     const placeId = searchParams.get("place_id");
 
@@ -21,20 +38,22 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
     }
 
-    // Separate cache entries for user-provided keys vs default
-    const cachePrefix = userKey ? `user:${userKey.slice(0, 8)}:` : "";
+    // Separate cache entries for user-provided keys vs default. Keyed off the
+    // *accepted* key, so a too-short header cannot namespace the server key's cache.
+    const cachePrefix = isValidUserKey ? `user:${userKey.slice(0, 8)}:` : "";
     const cacheId = `${cachePrefix}${placeId}`;
     const cached = cache.get(cacheId);
     if (cached && Date.now() < cached.expiresAt) {
         return NextResponse.json(cached.data);
     }
+    if (cached) cache.delete(cacheId); // expired — evict rather than leave it forever
 
     try {
         const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(
             placeId
         )}&fields=geometry,name,types,formatted_address&key=${apiKey}`;
 
-        const response = await fetch(url);
+        const response = await fetch(url, { signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) });
         const data = await response.json();
 
         if (data.status !== "OK") {
@@ -55,6 +74,11 @@ export async function GET(request: Request) {
             viewport: data.result.geometry?.viewport || null,
         };
         cache.set(cacheId, { data: result, expiresAt: Date.now() + TTL_MS });
+        // Map iterates in insertion order, so the first key is the oldest (FIFO eviction).
+        if (cache.size > MAX_CACHE_ENTRIES) {
+            const oldest = cache.keys().next().value;
+            if (oldest !== undefined) cache.delete(oldest);
+        }
         return NextResponse.json(result);
     } catch (error) {
         console.error("Error in Places Details route:", error);

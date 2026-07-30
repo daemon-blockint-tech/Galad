@@ -19,7 +19,7 @@ services:
       - path: .env
         required: false
     environment:
-      - "AUTH_SECRET=${AUTH_SECRET:-default_secret_for_local_dev}"
+      - "AUTH_SECRET=${AUTH_SECRET:?AUTH_SECRET must be set - run 'pnpm setup', or generate one with 'openssl rand -hex 32' and put it in .env}"
       - "MAVEN_DEMO_ADMIN_SECRET=${MAVEN_DEMO_ADMIN_SECRET:-}"
       - "MAVEN_BRIDGE_TOKEN=${MAVEN_BRIDGE_TOKEN:-}"
       - "DATABASE_URL=postgresql://postgres:postgres@db:5432/maven?schema=public"
