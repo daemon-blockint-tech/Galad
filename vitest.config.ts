@@ -9,6 +9,7 @@ export default defineConfig({
         globals: true,
         alias: {
             '@': path.resolve(__dirname, './src'),
+            '@maven-system/plugin-sdk': path.resolve(__dirname, './packages/grond-plugin-sdk/src'),
         },
         include: [
             'src/lib/**/*.{test,spec}.{js,ts,jsx,tsx}',

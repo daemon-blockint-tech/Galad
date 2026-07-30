@@ -32,6 +32,12 @@
       "@grond/plugin-sdk/vite": [
         "./packages/grond-plugin-sdk/src/vite.ts"
       ],
+      "@maven-system/plugin-sdk": [
+        "./packages/grond-plugin-sdk/src"
+      ],
+      "@maven-system/plugin-sdk/vite": [
+        "./packages/grond-plugin-sdk/src/vite.ts"
+      ],
       "@worldwideview/wwv-plugin-sdk": [
         "./packages/grond-plugin-sdk/src"
       ],
