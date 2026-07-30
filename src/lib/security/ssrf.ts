@@ -59,10 +59,17 @@ export function isPrivateIP(ip: string): boolean {
 
     if (!address.includes(":")) return false; // a hostname, not an address
 
-    const v6 = address.toLowerCase();
+    // Drop any zone id (fe80::1%eth0) before matching.
+    const v6 = address.toLowerCase().split("%")[0];
     if (v6 === "::" || v6 === "::1") return true; // unspecified, loopback
-    // fc00::/7 unique-local, fe80::/10 link-local.
-    return /^f[cd]/.test(v6) || /^fe[89ab]/.test(v6);
+    if (/^f[cd]/.test(v6)) return true; // fc00::/7 unique-local
+    if (/^fe[89ab]/.test(v6)) return true; // fe80::/10 link-local
+    if (/^ff/.test(v6)) return true; // ff00::/8 multicast
+    if (/^2002:/.test(v6)) return true; // 6to4 — embeds an arbitrary IPv4 destination
+    if (/^2001:0*:/.test(v6)) return true; // Teredo
+    if (/^64:ff9b:/.test(v6)) return true; // NAT64 — embeds an arbitrary IPv4 destination
+    if (/^100::/.test(v6)) return true; // discard-only
+    return false;
 }
 
 export function validateOrigin(urlStr: string): boolean {

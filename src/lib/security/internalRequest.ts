@@ -30,7 +30,13 @@ export function isInternalRequest(request: Request): boolean {
     if (!expected) return false;
 
     const provided = request.headers.get(INTERNAL_REQUEST_HEADER);
-    if (!provided || provided.length !== expected.length) return false;
+    if (!provided) return false;
 
-    return timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
+    // Compare byte lengths, not string lengths: a multi-byte character would
+    // otherwise reach timingSafeEqual with mismatched buffers, which throws.
+    const providedBytes = Buffer.from(provided);
+    const expectedBytes = Buffer.from(expected);
+    if (providedBytes.length !== expectedBytes.length) return false;
+
+    return timingSafeEqual(providedBytes, expectedBytes);
 }

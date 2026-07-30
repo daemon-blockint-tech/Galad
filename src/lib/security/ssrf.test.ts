@@ -33,6 +33,12 @@ describe("isPrivateIP", () => {
         ["::ffff:127.0.0.1", "IPv4-mapped loopback"],
         ["::ffff:169.254.169.254", "IPv4-mapped metadata"],
         ["[::1]", "bracketed IPv6 loopback"],
+        ["fe80::1%eth0", "link local with a zone id"],
+        ["ff02::1", "IPv6 multicast"],
+        ["2002:7f00:1::", "6to4 embedding 127.0.0.1"],
+        ["2001:0:0:0:0:0:0:1", "Teredo"],
+        ["64:ff9b::a00:1", "NAT64 embedding 10.0.0.1"],
+        ["100::1", "discard-only"],
     ])("blocks %s (%s)", (ip) => {
         expect(isPrivateIP(ip)).toBe(true);
     });
