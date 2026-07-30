@@ -7,8 +7,8 @@ import type { PluginManifest } from "@/core/plugins/PluginManifest";
 import { validateManifest } from "@/core/plugins/validateManifest";
 import { installLimiter } from "@/lib/rateLimiters";
 import { getClientIp } from "@/lib/rateLimit";
-import { isPluginInstallEnabled, isDemo, isDemoAdmin } from "@/core/edition";
-import { getVerifiedPluginIds } from "@/lib/marketplace/registryClient";
+import { isPluginInstallEnabled } from "@/core/edition";
+import { validateMarketplaceAuth } from "@/lib/marketplace/auth";
 import { getRequestOrigin } from "@/lib/origin";
 import { getTenantId } from "@/lib/tenant";
 
@@ -63,12 +63,10 @@ export async function GET(request: NextRequest) {
             return NextResponse.redirect(loginUrl);
         }
 
-        if (isDemo && !isDemoAdmin(session)) {
-            return NextResponse.json(
-                { error: "Admin access required on Demo edition" },
-                { status: 403 }
-            );
-        }
+        // Same gate as POST /api/marketplace/install: this writes the manifest that
+        // every member of the workspace then dynamically imports.
+        const authError = await validateMarketplaceAuth(request, { requireAdmin: true });
+        if (authError) return authError;
 
         const pluginId = searchParams.get("pluginId");
         const manifestB64 = searchParams.get("manifest");
@@ -98,9 +96,22 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        // Server-side trust stamping — never trust the incoming manifest's claim
-        const verified = await getVerifiedPluginIds();
-        manifest.trust = verified.has(pluginId) ? "verified" : "unverified";
+        // The id decides which record is overwritten, so it has to be the one the
+        // manifest actually describes — otherwise a caller can point an existing
+        // plugin's record at an unrelated bundle.
+        if (manifest.id !== pluginId) {
+            return NextResponse.json(
+                { error: "pluginId does not match the manifest id" },
+                { status: 400 },
+            );
+        }
+
+        // The registry signs a list of plugin ids, not manifests, so a caller-supplied
+        // manifest can never be proven to be the verified build of that id. Stamping it
+        // "verified" from the id alone would let this request bind a trusted name to an
+        // arbitrary entry URL — and the client skips its approval dialog for verified
+        // plugins. Manifests that arrive on the request are always unverified.
+        manifest.trust = "unverified";
 
         try {
             await upsertPlugin(pluginId, version, JSON.stringify(manifest));

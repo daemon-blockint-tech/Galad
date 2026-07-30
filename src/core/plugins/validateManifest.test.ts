@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateManifest } from "./validateManifest";
+import { validateManifest, isAllowedEntryUrl } from "./validateManifest";
 
 describe("validateManifest", () => {
   it("should validate a correct manifest", () => {
@@ -55,4 +55,38 @@ entry: "/p.js"
     expect(result.valid).toBe(false);
     expect(result.errors).toContain("Extension plugins require a non-empty extends array");
   });
+});
+
+describe("entry URL allowlist", () => {
+    // Each of these was ACCEPTED by the old substring matcher and becomes
+    // attacker-controlled JS executing on the app origin via `await import(entry)`.
+    it.each([
+        ["//attacker.example/pwn.js", "protocol-relative resolves to a foreign origin"],
+        ["https://attacker.example/pwn.js#.grond.dev", "allowlisted host in the fragment"],
+        ["https://attacker.example/pwn.js?x=.worldwideview.dev", "allowlisted host in the query"],
+        ["https://.grond.dev.attacker.example/pwn.js", "allowlisted host as a subdomain prefix"],
+        ["https://grond.dev.attacker.example/pwn.js", "allowlisted host as a label prefix"],
+        ["https://notgrond.dev/pwn.js", "suffix without the dot boundary"],
+        ["http://attacker.example/pwn.js", "plain http remote"],
+        ["javascript:alert(1)", "non-http scheme"],
+        ["https://unpkg.com.attacker.example/pwn.js", "CDN name as a subdomain"],
+        ["http://localhost.attacker.example/pwn.js", "localhost as a label prefix"],
+    ])("rejects %s (%s)", (entry) => {
+        expect(isAllowedEntryUrl(entry)).toBe(false);
+    });
+
+    it.each([
+        "/plugins/aviation.mjs",
+        "./local.mjs",
+        "https://cdn.jsdelivr.net/npm/pkg/dist/frontend.mjs",
+        "https://unpkg.com/pkg@1.0.0/dist/frontend.mjs",
+        "https://plugins.grond.dev/aviation.mjs",
+        "https://grond.dev/aviation.mjs",
+        "https://cdn.worldwideview.dev/x.mjs",
+        "https://marketplace.maven-system.dev/x.mjs",
+        "http://localhost:5173/src/plugin.ts",
+        "http://127.0.0.1:5173/src/plugin.ts",
+    ])("allows %s", (entry) => {
+        expect(isAllowedEntryUrl(entry)).toBe(true);
+    });
 });

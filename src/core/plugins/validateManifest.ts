@@ -19,6 +19,41 @@ export interface ValidationResult {
 const VALID_TYPES = ["data-layer", "extension"] as const;
 const VALID_TRUSTS = ["built-in", "verified", "unverified"] as const;
 
+/** Hosts allowed to serve a plugin bundle, matched on the parsed hostname. */
+const ALLOWED_ENTRY_HOSTS = ["grond.dev", "worldwideview.dev", "maven-system.dev"];
+const ALLOWED_ENTRY_CDNS = ["cdn.jsdelivr.net", "unpkg.com"];
+const LOCAL_ENTRY_HOSTS = ["localhost", "127.0.0.1"];
+
+/**
+ * Whether a manifest entry may be dynamically imported.
+ *
+ * The URL is parsed rather than substring-matched. Matching on the raw string
+ * let `https://attacker.example/pwn.js#.grond.dev` and
+ * `https://.grond.dev.attacker.example/x.js` through, and treated the
+ * protocol-relative `//attacker.example/pwn.js` as a same-origin relative path —
+ * each of which becomes attacker JS running on this app's origin.
+ */
+export function isAllowedEntryUrl(entry: string): boolean {
+    // Protocol-relative: looks relative, resolves to a foreign origin.
+    if (entry.startsWith("//")) return false;
+
+    if (entry.startsWith("/") || entry.startsWith("./") || entry.startsWith("../")) return true;
+
+    let url: URL;
+    try {
+        url = new URL(entry);
+    } catch {
+        return false;
+    }
+
+    if (url.protocol === "http:" && LOCAL_ENTRY_HOSTS.includes(url.hostname)) return true;
+    if (url.protocol !== "https:") return false;
+
+    const host = url.hostname.toLowerCase();
+    if (ALLOWED_ENTRY_CDNS.includes(host)) return true;
+    return ALLOWED_ENTRY_HOSTS.some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
+}
+
 /**
  * Validates a plugin manifest for structural integrity and security compliance.
  * This is the primary security gate for the Grond plugin ecosystem.
@@ -57,16 +92,8 @@ export function validateManifest(
     // Entry point validation - critical for preventing RCE
     if (!manifest.entry?.trim()) {
         errors.push("Missing required field: entry");
-    } else {
-        const entry = manifest.entry.trim();
-        const isRelative = entry.startsWith("/") || entry.startsWith("./");
-        const isLocal = entry.startsWith("http://localhost") || entry.startsWith("http://127.0.0.1");
-        const isGrond = entry.includes(".grond.dev") || entry.includes(".worldwideview.dev");
-        const isCDN = entry.startsWith("https://cdn.jsdelivr.net") || entry.startsWith("https://unpkg.com");
-
-        if (!isRelative && !isLocal && !isGrond && !isCDN) {
-            errors.push("entry URL must be a relative path, CDN, localhost, or grond.dev domain");
-        }
+    } else if (!isAllowedEntryUrl(manifest.entry.trim())) {
+        errors.push("entry URL must be a relative path, CDN, localhost, or grond.dev domain");
     }
 
     // Extension plugins require a target to extend

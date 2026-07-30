@@ -44,6 +44,7 @@ export async function POST(request: Request) {
 
         // Fetch from marketplace if manifest is missing (e.g. from in-app update)
         let finalManifest = manifest;
+        const manifestCameFromCaller = Boolean(finalManifest);
         if (!finalManifest) {
             const MARKETPLACE_URL = process.env.NEXT_PUBLIC_MARKETPLACE_URL || "https://marketplace.worldwideview.dev";
             try {
@@ -89,11 +90,30 @@ export async function POST(request: Request) {
              console.warn(`[Marketplace Install] No manifest provided or found for ${pluginId}`);
         }
 
-        // Server-side trust stamping — always overwrite trust from the
-        // live registry. Never trust the incoming manifest's claim.
+        // Server-side trust stamping — never trust the incoming manifest's claim.
+        //
+        // The registry signs a list of plugin ids, not manifests, so "this id is
+        // verified" says nothing about a manifest the caller handed us: stamping it
+        // verified would bind a trusted name to an arbitrary entry URL, and the
+        // client skips its approval dialog for verified plugins. Only a manifest
+        // this server fetched from the marketplace itself can earn that.
         if (finalManifest) {
-            const verified = await getVerifiedPluginIds();
-            finalManifest.trust = verified.has(pluginId) ? "verified" : "unverified";
+            if (manifestCameFromCaller) {
+                finalManifest.trust = "unverified";
+            } else {
+                const verified = await getVerifiedPluginIds();
+                finalManifest.trust = verified.has(pluginId) ? "verified" : "unverified";
+            }
+        }
+
+        if (finalManifest && finalManifest.id && finalManifest.id !== pluginId) {
+            return withCors(
+                NextResponse.json(
+                    { error: "pluginId does not match the manifest id" },
+                    { status: 400 },
+                ),
+                request,
+            );
         }
 
         const config = finalManifest ? JSON.stringify(finalManifest) : "{}";
