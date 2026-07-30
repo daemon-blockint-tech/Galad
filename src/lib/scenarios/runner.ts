@@ -2,7 +2,11 @@ import type { GeoEntity } from "@/core/plugins/PluginTypes";
 import { agentBus } from "@/lib/agent/bus";
 import { createOpsAlert } from "@/lib/ops/alerts";
 import { createOpsTask } from "@/lib/ops/tasks";
-import { DEFAULT_SCENARIO_TICK_MS, SIM_SCENARIOS_PLUGIN_ID } from "./constants";
+import {
+    DEFAULT_SCENARIO_TICK_MS,
+    SCENARIO_IDLE_TIMEOUT_MS,
+    SIM_SCENARIOS_PLUGIN_ID,
+} from "./constants";
 import { applyMotions, entitiesFromDefinition } from "./entities";
 import { assertScenariosEnabled } from "./guard";
 import { getScenario } from "./registry";
@@ -23,6 +27,8 @@ type ActiveRun = {
     tick: number;
     firedRuleIds: Set<string>;
     timer: ReturnType<typeof setInterval> | null;
+    /** Epoch ms after which an unattended run stops itself; see `touchScenario`. */
+    expiresAt: number;
 };
 
 const activeRuns = new Map<string, ActiveRun>();
@@ -56,6 +62,7 @@ export async function startScenario(userId: string, caseId: string): Promise<Sce
         tick: 0,
         firedRuleIds: new Set(),
         timer: null,
+        expiresAt: Date.now() + SCENARIO_IDLE_TIMEOUT_MS,
     };
     runs.set(userId, run);
     setScenarioEntities(userId, caseId, entities, 0);
@@ -89,11 +96,29 @@ export async function stopScenario(userId: string): Promise<void> {
 }
 
 /**
+ * Push back the idle deadline of a user's run.
+ *
+ * Called by the state poll: an open Sim panel keeps its scenario alive, and a
+ * closed tab stops polling, which is what lets `tickScenario` reap it.
+ */
+export function touchScenario(userId: string): void {
+    const run = runs.get(userId);
+    if (run) {
+        run.expiresAt = Date.now() + SCENARIO_IDLE_TIMEOUT_MS;
+    }
+}
+
+/**
  * Advance one tick: motion, rules, side effects.
  */
 export async function tickScenario(userId: string): Promise<void> {
     const run = runs.get(userId);
     if (!run) return;
+
+    if (Date.now() > run.expiresAt) {
+        await stopScenario(userId);
+        return;
+    }
 
     run.tick += 1;
     run.entities = applyMotions(

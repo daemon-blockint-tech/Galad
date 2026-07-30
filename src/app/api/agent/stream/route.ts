@@ -19,6 +19,7 @@ export async function GET() {
     const userId = session.user.id;
 
     let unsubscribe = () => {};
+    let heartbeat: ReturnType<typeof setInterval> | undefined;
     const id = `${userId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     const stream = new ReadableStream<Uint8Array>({
@@ -40,20 +41,17 @@ export async function GET() {
             // Heartbeat every 25s so intermediaries (Caddy, nginx, CDNs) don't
             // tear down a "stalled" connection. SSE-aware proxies typically
             // need a comment line every <30s to keep the channel alive.
-            const heartbeat = setInterval(() => {
+            heartbeat = setInterval(() => {
                 try {
                     controller.enqueue(encoder.encode(`:hb ${Date.now()}\n\n`));
                 } catch {
+                    // Belt for the case the platform never calls cancel().
                     clearInterval(heartbeat);
                 }
             }, 25_000);
-
-            (controller as any)._cleanup = () => {
-                clearInterval(heartbeat);
-                unsubscribe();
-            };
         },
         cancel() {
+            clearInterval(heartbeat);
             unsubscribe();
         },
     });

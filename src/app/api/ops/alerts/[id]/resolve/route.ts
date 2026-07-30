@@ -25,25 +25,27 @@ export async function PATCH(
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    const alert = await prisma.alert.update({
-      where: { id: alertId },
-      data: {
-        status: 'resolved',
-        resolvedAt: new Date(),
-      },
-    });
-
-    // Record event
-    await prisma.alertEvent.create({
-      data: {
-        tenantId,
-        alertId,
-        eventType: 'resolved',
-        actorUserId: userId,
-        actorAction: 'resolved',
-        actorNotes: notes,
-      },
-    });
+    // One transaction: a status change with no audit event is a hole in the
+    // record of who resolved what.
+    const [alert] = await prisma.$transaction([
+      prisma.alert.update({
+        where: { id: alertId },
+        data: {
+          status: 'resolved',
+          resolvedAt: new Date(),
+        },
+      }),
+      prisma.alertEvent.create({
+        data: {
+          tenantId,
+          alertId,
+          eventType: 'resolved',
+          actorUserId: userId,
+          actorAction: 'resolved',
+          actorNotes: notes,
+        },
+      }),
+    ]);
 
     return NextResponse.json({
       id: alert.id,

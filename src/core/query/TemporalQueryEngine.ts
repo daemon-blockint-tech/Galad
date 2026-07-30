@@ -55,7 +55,7 @@ export class TemporalQueryEngine {
   async query(q: TemporalQuery): Promise<TemporalQueryResult[]> {
     switch (q.type) {
       case 'anomaly_timeline':
-        return this.queryAnomalyTimeline(q);
+        return this.queryAnomalyTimeline();
 
       case 'behavior_change':
         return this.queryBehaviorChange(q);
@@ -73,48 +73,17 @@ export class TemporalQueryEngine {
 
   /**
    * Get anomaly scores over time.
+   *
+   * Not implemented. Nothing persists per-timestamp entity behaviours in this
+   * codebase — SemanticStore holds no time series and AnomalyDetectionEngine
+   * only scores behaviours handed to it — so there is no source to bucket. This
+   * previously filled every bucket with Math.random(); an analyst cannot tell
+   * invented anomaly scores from measured ones, so fail loudly instead.
    */
-  private async queryAnomalyTimeline(q: TemporalQuery): Promise<TemporalQueryResult[]> {
-    const [startTime, endTime] = q.timeRange;
-    const threshold = q.threshold ?? 0.5;
-    const bucketSize = this.getBucketSize(startTime, endTime, q.aggregation);
-
-    const results: TemporalQueryResult[] = [];
-
-    // For each entity, create anomaly timeline
-    const entityIds = q.entityIds || [];
-    if (entityIds.length === 0) {
-      // Return empty result if no entities specified
-      return [];
-    }
-
-    for (const entityId of entityIds) {
-      const timeline: TemporalQueryResult['timeline'] = [];
-
-      // Create time buckets
-      for (let t = startTime; t < endTime; t += bucketSize) {
-        const bucketEnd = Math.min(t + bucketSize, endTime);
-
-        // In a real implementation, would fetch behaviors from store/database
-        // and compute anomaly scores for this bucket
-        timeline.push({
-          timestamp: t,
-          value: Math.random(), // Placeholder
-          count: Math.floor(Math.random() * 50),
-        });
-      }
-
-      const summary = this.calculateSummary(timeline);
-
-      results.push({
-        type: 'anomaly_timeline',
-        entityId,
-        timeline,
-        summary,
-      });
-    }
-
-    return results;
+  private async queryAnomalyTimeline(): Promise<TemporalQueryResult[]> {
+    throw new Error(
+      'anomaly_timeline is not implemented: no anomaly history source is available',
+    );
   }
 
   /**

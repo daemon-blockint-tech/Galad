@@ -13,8 +13,15 @@ vi.mock("@/lib/agent/bus", () => ({
 import { agentBus } from "@/lib/agent/bus";
 import { createOpsAlert } from "@/lib/ops/alerts";
 import { createOpsTask } from "@/lib/ops/tasks";
+import { SCENARIO_IDLE_TIMEOUT_MS } from "../constants";
 import { getScenarioEntities } from "../runtime-store";
-import { startScenario, stopScenario, tickScenario } from "../runner";
+import {
+    scenarioStatusForUser,
+    startScenario,
+    stopScenario,
+    tickScenario,
+    touchScenario,
+} from "../runner";
 
 const USER = "runner-test-user";
 
@@ -26,6 +33,7 @@ describe("scenario runner", () => {
 
     afterEach(async () => {
         await stopScenario(USER);
+        vi.useRealTimers();
     });
 
     it("startScenario activates run and populates runtime store", async () => {
@@ -51,6 +59,26 @@ describe("scenario runner", () => {
     it("stopScenario clears runtime store and timers", async () => {
         await startScenario(USER, "maritime-ais-patrol");
         await stopScenario(USER);
+        expect(getScenarioEntities(USER)).toHaveLength(0);
+    });
+
+    it("stops an unattended run at the idle deadline but not a polled one", async () => {
+        // Fake timers so the run's own interval can't fire while we move the clock.
+        vi.useFakeTimers();
+        const startedAt = Date.now();
+        await startScenario(USER, "maritime-ais-patrol");
+
+        // A polling client pushed the deadline back, so the run survives past it.
+        vi.setSystemTime(startedAt + SCENARIO_IDLE_TIMEOUT_MS - 1_000);
+        touchScenario(USER);
+        vi.setSystemTime(startedAt + SCENARIO_IDLE_TIMEOUT_MS + 1_000);
+        await tickScenario(USER);
+        expect(scenarioStatusForUser(USER).active).toBe(true);
+
+        // Nobody polls after that; the first tick past the deadline reaps the run.
+        vi.setSystemTime(startedAt + 2 * SCENARIO_IDLE_TIMEOUT_MS + 2_000);
+        await tickScenario(USER);
+        expect(scenarioStatusForUser(USER).active).toBe(false);
         expect(getScenarioEntities(USER)).toHaveLength(0);
     });
 

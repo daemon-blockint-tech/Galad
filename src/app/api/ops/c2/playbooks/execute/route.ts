@@ -1,90 +1,41 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { PlaybookEngine } from '@/core/c2/PlaybookEngine';
-import { C2CommandExecutor } from '@/core/c2/C2CommandExecutor';
-import { prisma } from '@/lib/db';
+import { NextResponse } from 'next/server';
 import { getOpsUserId } from '@/lib/ops/session';
 
-const commandExecutor = new C2CommandExecutor(prisma);
-const playbookEngine = new PlaybookEngine(prisma, commandExecutor);
+/**
+ * Playbook execution is not implemented.
+ *
+ * PlaybookEngine keeps playbooks and executions in per-process Maps and there is
+ * no playbook table in prisma/schema.prisma, so a playbook created through
+ * POST /api/ops/c2/playbooks is never visible to this module and nothing can be
+ * resolved to execute. Reporting an outcome for containment actions
+ * (isolate / block_ip / quarantine) that were never issued is worse than
+ * refusing, so both verbs fail explicitly instead.
+ */
+const NOT_IMPLEMENTED = {
+  error:
+    'Playbook execution is not implemented: playbooks are not persisted, so no playbook can be resolved or executed.',
+};
 
 /**
  * POST /api/ops/c2/playbooks/execute
- * Execute a playbook on an entity.
- *
- * Request body:
- * {
- *   playbookId: string,
- *   entityId: string
- * }
  */
-export async function POST(request: NextRequest) {
+export async function POST() {
   const userId = await getOpsUserId();
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  try {
-    const body = await request.json();
-    const { playbookId, entityId } = body;
-
-    if (!playbookId || !entityId) {
-      return NextResponse.json(
-        { error: 'Missing required fields: playbookId, entityId' },
-        { status: 400 },
-      );
-    }
-
-    const execution = await playbookEngine.executePlaybook(playbookId, entityId);
-
-    return NextResponse.json({
-      success: true,
-      data: execution,
-    });
-  } catch (error) {
-    console.error('Playbook execution error:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to execute playbook' },
-      { status: 500 },
-    );
-  }
+  return NextResponse.json(NOT_IMPLEMENTED, { status: 501 });
 }
 
 /**
  * GET /api/ops/c2/playbooks/execute
- * Get execution status or history.
- *
- * Query parameters:
- * - id: Execution ID
- * - playbookId: Filter by playbook
  */
-export async function GET(request: NextRequest) {
+export async function GET() {
   const userId = await getOpsUserId();
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  try {
-    const searchParams = request.nextUrl.searchParams;
-    const executionId = searchParams.get('id');
-    const playbookId = searchParams.get('playbookId');
-
-    if (executionId) {
-      const execution = playbookEngine.getExecution(executionId);
-      if (!execution) {
-        return NextResponse.json({ error: 'Execution not found' }, { status: 404 });
-      }
-      return NextResponse.json({ success: true, data: execution });
-    }
-
-    const executions = playbookEngine.listExecutions(playbookId || undefined);
-
-    return NextResponse.json({
-      success: true,
-      data: executions,
-      count: executions.length,
-    });
-  } catch (error) {
-    console.error('Execution retrieval error:', error);
-    return NextResponse.json({ error: 'Failed to retrieve executions' }, { status: 500 });
-  }
+  return NextResponse.json(NOT_IMPLEMENTED, { status: 501 });
 }

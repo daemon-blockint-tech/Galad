@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getOpsUserId } from "@/lib/ops/session";
 import { isScenariosEnabled } from "@/lib/scenarios/guard";
 import { getScenarioEntities } from "@/lib/scenarios/runtime-store";
-import { scenarioStatusForUser } from "@/lib/scenarios/runner";
+import { scenarioStatusForUser, touchScenario } from "@/lib/scenarios/runner";
 
 /**
  * GET /api/ops/scenarios/state — active scenario status and current entities.
@@ -15,6 +15,9 @@ export async function GET() {
     if (!userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    // This poll is the only signal that a client is still watching.
+    touchScenario(userId);
 
     const status = scenarioStatusForUser(userId);
     const entities = getScenarioEntities(userId).map((e) => ({

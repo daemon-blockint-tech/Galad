@@ -41,25 +41,27 @@ export async function PATCH(
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    const alert = await prisma.alert.update({
-      where: { id: alertId },
-      data: {
-        status: 'suppressed',
-        suppressedUntil,
-      },
-    });
-
-    // Record event
-    await prisma.alertEvent.create({
-      data: {
-        tenantId,
-        alertId,
-        eventType: 'suppressed',
-        actorUserId: userId,
-        actorAction: 'suppressed',
-        eventData: JSON.stringify({ durationMs, suppressedUntil }),
-      },
-    });
+    // One transaction: a status change with no audit event is a hole in the
+    // record of who suppressed what.
+    const [alert] = await prisma.$transaction([
+      prisma.alert.update({
+        where: { id: alertId },
+        data: {
+          status: 'suppressed',
+          suppressedUntil,
+        },
+      }),
+      prisma.alertEvent.create({
+        data: {
+          tenantId,
+          alertId,
+          eventType: 'suppressed',
+          actorUserId: userId,
+          actorAction: 'suppressed',
+          eventData: JSON.stringify({ durationMs, suppressedUntil }),
+        },
+      }),
+    ]);
 
     // No re-activation timer: `suppressedUntil` is persisted and readers treat
     // an elapsed suppression as active, which survives a process restart.

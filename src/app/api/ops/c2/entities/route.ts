@@ -191,10 +191,15 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Mark alerts as resolved (soft delete)
+    // Mark alerts as resolved (soft delete). Scoped to the placeholder rows POST
+    // writes above: an entity id is shared with the alerts other sources raise
+    // for the same entity (fire detections, threat intel, correlations), and
+    // resolving those would silently clear them from the active alert queue.
     const updated = await prisma.alert.updateMany({
       where: {
         entityId: { in: entityIds },
+        sourcePluginId: 'c2',
+        type: 'system',
       },
       data: {
         status: 'resolved',

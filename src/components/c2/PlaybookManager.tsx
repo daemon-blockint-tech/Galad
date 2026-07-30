@@ -8,7 +8,6 @@ import {
   Trash2,
   ChevronDown,
   ChevronUp,
-  CheckCircle2,
   AlertCircle,
   Clock,
   Zap,
@@ -31,21 +30,12 @@ interface Playbook {
   enabled: boolean;
 }
 
-interface PlaybookExecution {
-  id: string;
-  playbookId: string;
-  status: 'pending' | 'running' | 'success' | 'failed';
-  startTime: number;
-  duration?: number;
-}
-
 interface PlaybookManagerProps {
   entityId?: string;
   entityName?: string;
-  onPlaybookExecute?: (playbookId: string) => void;
 }
 
-export function PlaybookManager({ entityId, entityName, onPlaybookExecute }: PlaybookManagerProps) {
+export function PlaybookManager({ entityName }: PlaybookManagerProps) {
   const [playbooks, setPlaybooks] = useState<Playbook[]>([
     {
       id: 'pb-isolate-respond',
@@ -81,37 +71,8 @@ export function PlaybookManager({ entityId, entityName, onPlaybookExecute }: Pla
     },
   ]);
 
-  const [executions, setExecutions] = useState<PlaybookExecution[]>([]);
   const [expandedPlaybookId, setExpandedPlaybookId] = useState<string | null>(null);
   const [showNewPlaybookForm, setShowNewPlaybookForm] = useState(false);
-
-  const handleExecutePlaybook = async (playbookId: string) => {
-    const executionId = `exec-${playbookId}-${Date.now()}`;
-    const execution: PlaybookExecution = {
-      id: executionId,
-      playbookId,
-      status: 'running',
-      startTime: Date.now(),
-    };
-
-    setExecutions((prev) => [execution, ...prev]);
-    onPlaybookExecute?.(playbookId);
-
-    // Simulate execution
-    setTimeout(() => {
-      setExecutions((prev) =>
-        prev.map((e) =>
-          e.id === executionId
-            ? {
-                ...e,
-                status: Math.random() > 0.2 ? 'success' : 'failed',
-                duration: Date.now() - e.startTime,
-              }
-            : e,
-        ),
-      );
-    }, 3000);
-  };
 
   const handleTogglePlaybook = (playbookId: string) => {
     setPlaybooks((prev) =>
@@ -196,7 +157,6 @@ export function PlaybookManager({ entityId, entityName, onPlaybookExecute }: Pla
       <div className="space-y-2 max-h-96 overflow-y-auto">
         {playbooks.map((playbook) => {
           const isExpanded = expandedPlaybookId === playbook.id;
-          const recentExecution = executions.find((e) => e.playbookId === playbook.id);
 
           return (
             <div
@@ -226,30 +186,15 @@ export function PlaybookManager({ entityId, entityName, onPlaybookExecute }: Pla
 
                 {/* Actions */}
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  {recentExecution && (
-                    <div
-                      className={`flex items-center gap-1 px-2 py-1 rounded text-xs ${
-                        recentExecution.status === 'success'
-                          ? 'bg-green-900/30 text-green-400'
-                          : recentExecution.status === 'failed'
-                            ? 'bg-red-900/30 text-red-400'
-                            : 'bg-blue-900/30 text-blue-400'
-                      }`}
-                    >
-                      {recentExecution.status === 'running' && (
-                        <Pause size={12} className="animate-pulse" />
-                      )}
-                      {recentExecution.status === 'success' && <CheckCircle2 size={12} />}
-                      {recentExecution.status === 'failed' && <AlertCircle size={12} />}
-                      <span className="capitalize">{recentExecution.status}</span>
-                    </div>
-                  )}
-
+                  {/*
+                    Execution is disabled, not simulated: there is no server path
+                    that runs a playbook, so a click could only ever report an
+                    outcome that did not happen.
+                  */}
                   <button
-                    onClick={() => handleExecutePlaybook(playbook.id)}
-                    disabled={!entityId || !playbook.enabled}
-                    className="p-1.5 hover:bg-blue-900/30 disabled:hover:bg-transparent text-blue-400 disabled:text-slate-600 rounded transition"
-                    title="Execute playbook"
+                    disabled
+                    className="p-1.5 disabled:hover:bg-transparent text-slate-600 rounded transition"
+                    title="Playbook execution is not implemented"
                   >
                     <Play size={14} />
                   </button>
@@ -305,41 +250,16 @@ export function PlaybookManager({ entityId, entityName, onPlaybookExecute }: Pla
         })}
       </div>
 
-      {/* Automation Rules Info */}
-      <div className="text-xs text-slate-500 p-3 bg-slate-800/20 border border-slate-700/50 rounded">
-        <p className="font-semibold text-slate-400 mb-1">🤖 Autonomous Response</p>
-        <p>Playbooks can be triggered automatically based on threat levels and status changes.</p>
+      {/* Execution Availability */}
+      <div className="text-xs text-amber-400/80 p-3 bg-amber-900/10 border border-amber-700/40 rounded">
+        <p className="font-semibold text-amber-400 mb-1">Execution unavailable</p>
+        <p>
+          Playbook execution is not implemented. No command is issued and no containment
+          action is taken
+          {entityName ? ` on ${entityName}` : ''} — isolate, block and quarantine must be
+          run from the owning security console.
+        </p>
       </div>
-
-      {/* Recent Executions */}
-      {executions.length > 0 && (
-        <div className="space-y-2">
-          <h4 className="text-xs font-semibold text-slate-400">Recent Executions</h4>
-          {executions.slice(0, 5).map((execution) => {
-            const playbook = playbooks.find((pb) => pb.id === execution.playbookId);
-            return (
-              <div
-                key={execution.id}
-                className="flex items-center justify-between p-2 bg-slate-800/30 border border-slate-700 rounded text-xs"
-              >
-                <span className="text-slate-300">{playbook?.name}</span>
-                <div className="flex items-center gap-2">
-                  {execution.status === 'success' && (
-                    <CheckCircle2 size={14} className="text-green-400" />
-                  )}
-                  {execution.status === 'failed' && <AlertCircle size={14} className="text-red-400" />}
-                  {execution.status === 'running' && (
-                    <Pause size={14} className="text-blue-400 animate-pulse" />
-                  )}
-                  {execution.duration && (
-                    <span className="text-slate-500">{(execution.duration / 1000).toFixed(1)}s</span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }
