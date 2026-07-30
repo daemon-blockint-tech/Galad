@@ -8,7 +8,7 @@
 import { describe, expect, it } from "vitest";
 
 import { Prisma } from "@/generated/prisma";
-import { TENANT_SCOPED_MODELS } from "./db";
+import { assertOperationIsScopable, TENANT_SCOPED_MODELS } from "./db";
 
 const modelsWithTenantId = Prisma.dmmf.datamodel.models
     .filter((model) => model.fields.some((field) => field.name === "tenantId"))
@@ -44,6 +44,23 @@ describe("tenant isolation model set", () => {
     it("covers the tenanted models the ops surface actually writes", () => {
         for (const model of ["Alert", "AlertEvent", "EntityClassification"]) {
             expect(TENANT_SCOPED_MODELS.has(model)).toBe(true);
+        }
+    });
+});
+
+describe("unscopable operations", () => {
+    it("names every operation the extension can scope", () => {
+        // Guards against a future Prisma operation being silently unscoped.
+        expect(() => assertOperationIsScopable("Alert", "findMany")).not.toThrow();
+        expect(() => assertOperationIsScopable("Alert", "create")).not.toThrow();
+        expect(() => assertOperationIsScopable("Alert", "findUniqueOrThrow")).not.toThrow();
+    });
+
+    it("refuses an operation it cannot scope rather than leaking across tenants", () => {
+        for (const operation of ["groupBy", "aggregate", "someFutureOperation"]) {
+            expect(() => assertOperationIsScopable("Alert", operation)).toThrow(
+                /no tenant scoping/,
+            );
         }
     });
 });

@@ -55,6 +55,30 @@ export function assertTenantResolved(
     );
 }
 
+/** Operations whose `where` the extension rewrites to pin the tenant. */
+const WHERE_SCOPED_OPERATIONS = new Set([
+    "findUnique", "findUniqueOrThrow", "findFirst", "findFirstOrThrow", "findMany",
+    "update", "updateMany", "delete", "deleteMany", "count", "upsert",
+]);
+
+/** Operations that carry no `where` but are still safely scoped by data injection. */
+const DATA_SCOPED_OPERATIONS = new Set(["create", "createMany", "createManyAndReturn"]);
+
+/**
+ * Refuses an operation on a tenanted model that this extension does not know how
+ * to scope — `groupBy` and `aggregate` accept a `where` Prisma shapes differently,
+ * and anything added to Prisma later lands here too. None are used today; the
+ * point is that the first one someone writes fails loudly instead of silently
+ * returning another tenant's rows.
+ */
+export function assertOperationIsScopable(model: string, operation: string): void {
+    if (WHERE_SCOPED_OPERATIONS.has(operation) || DATA_SCOPED_OPERATIONS.has(operation)) return;
+    throw new Error(
+        `[db] ${model}.${operation} has no tenant scoping in the Prisma extension. `
+        + `Add it to WHERE_SCOPED_OPERATIONS in src/lib/db.ts, or pass tenantId explicitly.`,
+    );
+}
+
 function applyTenantIsolation(client: any) {
     // Use Prisma Client Extension to inject RLS
     return client.$extends({
@@ -97,9 +121,10 @@ function applyTenantIsolation(client: any) {
                         }
 
                         // Inject into where filters
-                        if (['findUnique', 'findFirst', 'findMany', 'update', 'updateMany', 'delete', 'deleteMany', 'count', 'upsert'].includes(operation)) {
+                        if (WHERE_SCOPED_OPERATIONS.has(operation)) {
                             args.where = { ...(args.where || {}), tenantId: tenantSubdomain };
                         }
+                        assertOperationIsScopable(model, operation);
 
                         return query(args);
                     }

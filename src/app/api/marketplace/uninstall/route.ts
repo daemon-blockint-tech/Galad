@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     const rateLimited = marketplaceApiLimiter.check(getClientIp(request));
     if (rateLimited) return withCors(rateLimited, request);
 
-    const authError = await validateMarketplaceAuth(request);
+    const authError = await validateMarketplaceAuth(request, { requireAdmin: true });
     if (authError) return withCors(authError, request);
 
     try {

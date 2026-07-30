@@ -121,3 +121,51 @@ describe("self-hosted local is unaffected", () => {
         expect(await validateMarketplaceAuth(bearerRequest(token))).toBeNull();
     });
 });
+
+describe("mutating routes require an admin", () => {
+    // A plugin manifest's `entry` is dynamically imported into every member's
+    // browser, so install/uninstall/enable/disable is code execution for the
+    // whole workspace, not a per-user preference.
+    it("rejects a non-admin session", async () => {
+        const { validateMarketplaceAuth } = await load("local");
+        const { auth } = await import("@/lib/auth");
+        vi.mocked(auth).mockResolvedValue({ user: { id: "u1", role: "user" } } as never);
+
+        const request = new Request("https://app.local/api/marketplace/uninstall");
+        const res = await validateMarketplaceAuth(request, { requireAdmin: true });
+
+        expect(res?.status).toBe(403);
+        vi.mocked(auth).mockResolvedValue(null as never);
+    });
+
+    it("admits an admin session", async () => {
+        const { validateMarketplaceAuth } = await load("local");
+        const { auth } = await import("@/lib/auth");
+        vi.mocked(auth).mockResolvedValue({ user: { id: "u1", role: "admin" } } as never);
+
+        const request = new Request("https://app.local/api/marketplace/uninstall");
+        await expect(
+            validateMarketplaceAuth(request, { requireAdmin: true }),
+        ).resolves.toBeNull();
+        vi.mocked(auth).mockResolvedValue(null as never);
+    });
+
+    it("still admits a non-admin on read-only access", async () => {
+        const { validateMarketplaceAuth } = await load("local");
+        const { auth } = await import("@/lib/auth");
+        vi.mocked(auth).mockResolvedValue({ user: { id: "u1", role: "user" } } as never);
+
+        const request = new Request("https://app.local/api/marketplace/load");
+        await expect(validateMarketplaceAuth(request)).resolves.toBeNull();
+        vi.mocked(auth).mockResolvedValue(null as never);
+    });
+
+    it("rejects a non-admin bearer token on a mutating route", async () => {
+        const { validateMarketplaceAuth, issueMarketplaceToken } = await load("local");
+        const token = await issueMarketplaceToken("member", null, "user");
+
+        const res = await validateMarketplaceAuth(bearerRequest(token), { requireAdmin: true });
+
+        expect(res?.status).toBe(403);
+    });
+});
