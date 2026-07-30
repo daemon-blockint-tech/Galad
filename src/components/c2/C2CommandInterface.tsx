@@ -8,6 +8,8 @@ interface Command {
   name: string;
   description: string;
   category: string;
+  /** Actuating commands have no endpoint integration; the server refuses them. */
+  unavailable?: boolean;
   parameters?: Array<{
     name: string;
     type: 'string' | 'number' | 'boolean' | 'select';
@@ -44,18 +46,21 @@ const COMMON_COMMANDS: Command[] = [
     name: 'Restart',
     description: 'Restart the entity',
     category: 'control',
+    unavailable: true,
   },
   {
     id: 'isolate',
     name: 'Isolate',
     description: 'Isolate entity from network',
     category: 'security',
+    unavailable: true,
   },
   {
     id: 'collect',
     name: 'Collect Artifacts',
     description: 'Collect forensic artifacts',
     category: 'response',
+    unavailable: true,
     parameters: [
       {
         name: 'artifact_type',
@@ -70,6 +75,7 @@ const COMMON_COMMANDS: Command[] = [
     name: 'Block IP',
     description: 'Block suspicious IP address',
     category: 'security',
+    unavailable: true,
     parameters: [
       {
         name: 'ip_address',
@@ -88,6 +94,7 @@ const COMMON_COMMANDS: Command[] = [
     name: 'Quarantine',
     description: 'Quarantine potentially malicious file',
     category: 'response',
+    unavailable: true,
     parameters: [
       {
         name: 'file_path',
@@ -289,9 +296,22 @@ export function C2CommandInterface({
                   <button
                     key={cmd.id}
                     onClick={() => setSelectedCommand(cmd)}
-                    className="w-full text-left p-3 bg-slate-800/50 hover:bg-slate-800 rounded transition border border-slate-700 hover:border-slate-600"
+                    disabled={cmd.unavailable}
+                    title={
+                      cmd.unavailable
+                        ? 'Not implemented — no endpoint integration is configured'
+                        : undefined
+                    }
+                    className="w-full text-left p-3 bg-slate-800/50 hover:bg-slate-800 rounded transition border border-slate-700 hover:border-slate-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-800/50 disabled:hover:border-slate-700"
                   >
-                    <div className="font-medium text-slate-100 text-sm">{cmd.name}</div>
+                    <div className="font-medium text-slate-100 text-sm">
+                      {cmd.name}
+                      {cmd.unavailable && (
+                        <span className="ml-2 text-[10px] uppercase tracking-wide text-amber-400/80">
+                          unavailable
+                        </span>
+                      )}
+                    </div>
                     <div className="text-xs text-slate-400 mt-1">{cmd.description}</div>
                     <div className="text-xs text-slate-500 mt-2 capitalize">{cmd.category}</div>
                   </button>
