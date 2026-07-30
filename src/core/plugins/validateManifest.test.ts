@@ -62,6 +62,11 @@ describe("entry URL allowlist", () => {
     // attacker-controlled JS executing on the app origin via `await import(entry)`.
     it.each([
         ["//attacker.example/pwn.js", "protocol-relative resolves to a foreign origin"],
+        ["/\\evil.com/x.js", "slash-backslash is an authority to the URL parser"],
+        ["\\\\evil.com/x.js", "double backslash authority"],
+        ["/\\/evil.com/x.js", "mixed slash run"],
+        ["\u0020//evil.com/x.js", "leading space the parser strips"],
+        ["\u0009/\\evil.com/x.js", "leading tab the parser strips"],
         ["https://attacker.example/pwn.js#.grond.dev", "allowlisted host in the fragment"],
         ["https://attacker.example/pwn.js?x=.worldwideview.dev", "allowlisted host in the query"],
         ["https://.grond.dev.attacker.example/pwn.js", "allowlisted host as a subdomain prefix"],

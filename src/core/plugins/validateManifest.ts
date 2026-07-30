@@ -34,14 +34,25 @@ const LOCAL_ENTRY_HOSTS = ["localhost", "127.0.0.1"];
  * each of which becomes attacker JS running on this app's origin.
  */
 export function isAllowedEntryUrl(entry: string): boolean {
-    // Protocol-relative: looks relative, resolves to a foreign origin.
-    if (entry.startsWith("//")) return false;
+    // The URL parser strips leading C0 controls and spaces before parsing, and for
+    // http(s) it treats a backslash as a slash - so "/\\evil.com/x.js" is an
+    // authority, not a path, and resolves to https://evil.com/x.js.
+    const candidate = entry.replace(/^[\u0000-\u0020]+/, "");
 
-    if (entry.startsWith("/") || entry.startsWith("./") || entry.startsWith("../")) return true;
+    // A backslash has no legitimate place in an entry URL, and every form of it
+    // smuggles an authority past a leading-slash check.
+    if (candidate.includes("\\")) return false;
+
+    // Protocol-relative: looks relative, resolves to a foreign origin.
+    if (candidate.startsWith("//")) return false;
+
+    if (candidate.startsWith("/") || candidate.startsWith("./") || candidate.startsWith("../")) {
+        return true;
+    }
 
     let url: URL;
     try {
-        url = new URL(entry);
+        url = new URL(candidate);
     } catch {
         return false;
     }

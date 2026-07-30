@@ -115,10 +115,15 @@ export async function GET(request: Request) {
                 return validation.valid;
             })
             .map((m: any) => {
-                // Re-stamp trust against the live registry so revoked plugins
-                // are correctly gated by the unverified dialog on the client.
-                if (m.trust !== "built-in") {
-                    m.trust = verifiedIds.has(m.id) ? "verified" : "unverified";
+                // Re-stamp against the live registry so a revoked plugin is gated by
+                // the unverified dialog on the client. Demote only, never promote:
+                // the registry signs a list of ids, not manifests, so id membership
+                // says nothing about a stored manifest's entry URL. Promoting on id
+                // alone would hand "verified" — and so a skipped approval dialog — to
+                // any manifest installed under a verified plugin's name, undoing the
+                // stamping rule in the install routes.
+                if (m.trust === "verified" && !verifiedIds.has(m.id)) {
+                    m.trust = "unverified";
                 }
                 return m;
             });

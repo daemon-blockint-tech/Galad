@@ -183,3 +183,40 @@ describe("self-hosted editions are unaffected", () => {
         expect(res!.headers.get("location")).toContain("/setup");
     });
 });
+
+describe("admin route gate", () => {
+    beforeEach(() => {
+        vi.stubGlobal("fetch", vi.fn(async () => Response.json({ status: "active" })));
+    });
+
+    it("lets an admin through to /admin", async () => {
+        // Regression: getToken returns the flat JWT payload, but isPlatformAdmin
+        // expects a session shape. Passing the token straight in made
+        // `session.user` undefined, so every real admin was bounced to
+        // /admin/forbidden and the console was unreachable.
+        const proxy = await loadProxy("local");
+        vi.mocked(getToken).mockResolvedValue({ sub: "u1", role: "admin" });
+
+        const res = await proxy(request("app.local", "/admin/overview"));
+
+        expect(res.headers.get("location")).toBeNull();
+    });
+
+    it("bounces a non-admin to /admin/forbidden", async () => {
+        const proxy = await loadProxy("local");
+        vi.mocked(getToken).mockResolvedValue({ sub: "u1", role: "user" });
+
+        const res = await proxy(request("app.local", "/admin/overview"));
+
+        expect(res.headers.get("location")).toContain("/admin/forbidden");
+    });
+
+    it("sends an anonymous visitor to login", async () => {
+        const proxy = await loadProxy("local");
+        vi.mocked(getToken).mockResolvedValue(null);
+
+        const res = await proxy(request("app.local", "/admin/overview"));
+
+        expect(res.headers.get("location")).toContain("/login");
+    });
+});

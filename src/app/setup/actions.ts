@@ -4,11 +4,15 @@ import { hashSync } from "bcryptjs";
 import { AuthError } from "next-auth";
 import { prisma } from "@/lib/db";
 import { signIn } from "@/lib/auth";
+import { isCloud } from "@/core/edition";
 
 interface SetupResult {
     success: boolean;
     error?: string;
 }
+
+/** Thrown inside the setup transaction when a user already exists. */
+class SetupAlreadyCompleteError extends Error {}
 
 /** Create the initial admin account. Rejects if any user already exists. */
 export async function createAdminAccount(formData: FormData): Promise<SetupResult> {
@@ -27,20 +31,44 @@ export async function createAdminAccount(formData: FormData): Promise<SetupResul
         return { success: false, error: "Passwords do not match." };
     }
 
-    const existingCount = await prisma.user.count();
-    if (existingCount > 0) {
-        return { success: false, error: "Admin account already exists." };
+    // Cloud workspaces are provisioned, not first-run set up. The tenant extension
+    // scopes this count to the request's workspace, so on cloud it reads 0 for any
+    // workspace that has no user yet — and an anonymous visitor to
+    // <subdomain>.<host>/setup could claim admin on it. Nothing in this repo
+    // provisions a workspace's first user, so refusing here loses no flow.
+    if (isCloud) {
+        return {
+            success: false,
+            error: "First-run setup is not available on this deployment.",
+        };
     }
 
     const hashedPassword = hashSync(password, 12);
-    await prisma.user.create({
-        data: {
-            name,
-            email,
-            hashedPassword,
-            role: "admin",
-        },
-    });
+
+    // Count and create in one serializable transaction. Read-then-write across two
+    // statements let two concurrent first-run submissions with different emails
+    // both see zero users and both become admins — the unique index on email does
+    // not collide, so nothing else would have caught it. Postgres aborts one of the
+    // two here instead.
+    try {
+        await prisma.$transaction(
+            async (tx) => {
+                if ((await tx.user.count()) > 0) {
+                    throw new SetupAlreadyCompleteError();
+                }
+                await tx.user.create({
+                    data: { name, email, hashedPassword, role: "admin" },
+                });
+            },
+            { isolationLevel: "Serializable" },
+        );
+    } catch (e) {
+        if (e instanceof SetupAlreadyCompleteError) {
+            return { success: false, error: "Admin account already exists." };
+        }
+        console.error("[setup] createAdminAccount failed", e);
+        return { success: false, error: "Could not create the admin account." };
+    }
 
     return { success: true };
 }

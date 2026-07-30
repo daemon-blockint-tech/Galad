@@ -232,7 +232,10 @@ export default async function proxy(req: NextRequest) {
         if (!token) {
             return NextResponse.redirect(new URL("/login", req.nextUrl));
         }
-        if (!isPlatformAdmin(token)) {
+        // getToken returns the flat JWT payload; isPlatformAdmin expects a session
+        // shape, so passing the token straight in made `session.user` undefined and
+        // sent every real admin to /admin/forbidden.
+        if (!isPlatformAdmin({ user: { role: token.role } })) {
             return NextResponse.redirect(new URL("/admin/forbidden", req.nextUrl));
         }
     }
