@@ -17,6 +17,7 @@ export default defineConfig({
             'src/core/**/*.{test,spec}.{js,ts,jsx,tsx}',
             'src/plugins/**/*.{test,spec}.{js,ts,jsx,tsx}',
             'src/app/**/*.{test,spec}.{js,ts,jsx,tsx}',
+            'src/components/**/*.{test,spec}.{js,ts,jsx,tsx}',
             'packages/**/*.{test,spec}.{js,ts,jsx,tsx}',
         ],
         exclude: [

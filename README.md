@@ -183,9 +183,9 @@ REDIS_URL=redis://localhost:6379
 # LLM Integration
 OPENROUTER_API_KEY=your_key_here
 
-# Authentication
-NEXTAUTH_SECRET=your_secret
-NEXTAUTH_URL=http://localhost:3000
+# Authentication (required — no default; `pnpm setup` generates one)
+AUTH_SECRET=your_secret
+AUTH_URL=http://localhost:3000
 
 # Monitoring
 SENTRY_DSN=your_dsn_here

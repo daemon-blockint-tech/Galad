@@ -20,8 +20,6 @@ export class AlertChannelEmail {
   private smtpPort: number;
   private from: string;
   private recipients: string[];
-  private maxRetries = 3;
-  private retryDelays = [1000, 2000, 5000]; // ms
 
   constructor(config: {
     smtpHost: string;
@@ -41,46 +39,9 @@ export class AlertChannelEmail {
   async send(alertId: string, alert: EmailAlert): Promise<{ success: boolean; messageId?: string; error?: string }> {
     const emailContent = this.formatEmail(alertId, alert);
 
-    for (let attempt = 0; attempt < this.maxRetries; attempt++) {
-      try {
-        // In production, use nodemailer or similar library
-        // This is a placeholder that would integrate with actual SMTP
-        const result = await this.sendViaSmtp(emailContent);
-
-        if (result.success) {
-          return {
-            success: true,
-            messageId: result.messageId,
-          };
-        }
-
-        // Retry on transient errors
-        if (attempt < this.maxRetries - 1) {
-          await new Promise((resolve) => setTimeout(resolve, this.retryDelays[attempt]));
-          continue;
-        }
-
-        return {
-          success: false,
-          error: result.error,
-        };
-      } catch (error) {
-        if (attempt < this.maxRetries - 1) {
-          await new Promise((resolve) => setTimeout(resolve, this.retryDelays[attempt]));
-          continue;
-        }
-
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        };
-      }
-    }
-
-    return {
-      success: false,
-      error: 'Max retries exceeded',
-    };
+    // Not retried: sendViaSmtp has no SMTP client to reach, so the failure is
+    // permanent and retrying only delays the rest of the routing fan-out.
+    return this.sendViaSmtp(emailContent);
   }
 
   private formatEmail(alertId: string, alert: EmailAlert): {
@@ -212,19 +173,16 @@ Please do not reply to this email. Use the dashboard to manage alerts.
     html: string;
     text: string;
   }): Promise<{ success: boolean; messageId?: string; error?: string }> {
-    // Placeholder for actual SMTP integration
-    // In production, use nodemailer:
-    // const nodemailer = require('nodemailer');
-    // const transporter = nodemailer.createTransport({...});
-    // const info = await transporter.sendMail(email);
-    // return { success: true, messageId: info.messageId };
+    // No SMTP client is wired up. Reporting a delivered alert that was never
+    // sent is the worst failure mode for an alerting channel — the operator
+    // stops watching precisely because the system says it told them.
+    console.error(
+      `[AlertChannelEmail] SMTP is not implemented; alert NOT delivered to ${email.to.join(', ')}`,
+    );
 
-    console.warn('Email integration requires SMTP configuration. Placeholder sending email to:', email.to.join(', '));
-
-    // For now, return success (actual implementation would send via SMTP)
     return {
-      success: true,
-      messageId: `email-${Date.now()}`,
+      success: false,
+      error: 'SMTP delivery is not implemented — no email was sent.',
     };
   }
 
@@ -247,8 +205,9 @@ Please do not reply to this email. Use the dashboard to manage alerts.
    * Verify email configuration.
    */
   async verify(): Promise<boolean> {
-    // Placeholder: in production, test SMTP connection
-    return this.recipients.length > 0;
+    // Unhealthy by definition until sendViaSmtp can actually deliver, so the
+    // channel manager reports email as down instead of configured-and-working.
+    return false;
   }
 
   /**

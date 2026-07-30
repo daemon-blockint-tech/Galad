@@ -62,11 +62,15 @@ export class FusionCoordinator {
     };
 
     for (const source of sources) {
+      const configured = credibilityMap[source] ?? 0.7;
       this.sourceCredibilityCache.set(source, {
         sourceId: source,
-        trustScore: credibilityMap[source] || 0.7,
-        historicalAccuracy: Math.random() * 0.3 + 0.65, // Mock historical accuracy
-        rationale: `Source credibility for ${source}`,
+        trustScore: configured,
+        // Seeded from the configured prior, not measured. updateSourceCredibility
+        // averages real validation outcomes in as they arrive. It was a random
+        // number, which read as an observed accuracy an analyst could act on.
+        historicalAccuracy: configured,
+        rationale: `Configured prior for ${source}; no validation history yet`,
       });
     }
   }

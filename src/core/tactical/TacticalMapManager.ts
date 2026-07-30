@@ -298,7 +298,9 @@ export class TacticalMapManager {
 
         if (distance <= maxRange) {
           const signalStrength = Math.max(0, 1 - distance / maxRange);
-          const latency = Math.round(distance * 0.5 + Math.random() * 10);
+          // Propagation estimate from range alone (~0.5 ms/km), not a measurement.
+          // The previous random jitter made it look like observed link latency.
+          const latency = Math.round(distance * 0.5);
 
           topology.push({
             sourceId: tracks[i].entityId,

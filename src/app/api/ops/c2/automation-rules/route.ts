@@ -1,131 +1,40 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { PlaybookEngine } from '@/core/c2/PlaybookEngine';
-import { C2CommandExecutor } from '@/core/c2/C2CommandExecutor';
-import { prisma } from '@/lib/db';
+import { NextResponse } from 'next/server';
 import { getOpsUserId } from '@/lib/ops/session';
 
-const commandExecutor = new C2CommandExecutor(prisma);
-const playbookEngine = new PlaybookEngine(prisma, commandExecutor);
-
 /**
- * GET /api/ops/c2/automation-rules
- * List automation rules.
+ * Automation rules are not implemented.
+ *
+ * Rules were held in a per-process PlaybookEngine Map with no table behind them,
+ * and `PlaybookEngine.evaluateAutomationRules` has no caller — nothing ever
+ * evaluated a trigger. Accepting a rule that silently never fires is worse than
+ * refusing on an operations product: it reads as configured automated response
+ * where there is none. Their action targets playbooks, which are themselves not
+ * persisted (see ../playbooks/route.ts).
  */
-export async function GET(request: NextRequest) {
+const NOT_IMPLEMENTED = {
+  error:
+    'Automation rules are not implemented: rules are not persisted and no evaluator runs, so a rule created here would never fire.',
+};
+
+async function refuse() {
   const userId = await getOpsUserId();
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-
-  try {
-    const rules = playbookEngine.listAutomationRules();
-
-    return NextResponse.json({
-      success: true,
-      data: rules,
-      count: rules.length,
-    });
-  } catch (error) {
-    console.error('Automation rules listing error:', error);
-    return NextResponse.json({ error: 'Failed to list automation rules' }, { status: 500 });
-  }
+  return NextResponse.json(NOT_IMPLEMENTED, { status: 501 });
 }
 
-/**
- * POST /api/ops/c2/automation-rules
- * Create an automation rule.
- *
- * Request body:
- * {
- *   id: string,
- *   name: string,
- *   description: string,
- *   trigger: {
- *     type: 'threat_level' | 'alert_type' | 'status_change' | 'time_based',
- *     threshold?: number,
- *     alertType?: string,
- *     status?: string,
- *     schedule?: string
- *   },
- *   action: {
- *     playbookId: string,
- *     parameters?: Record<string, any>
- *   },
- *   scope: {
- *     entityIds?: string[],
- *     platformTypes?: string[],
- *     threatLevelRange?: [number, number]
- *   },
- *   enabled: boolean
- * }
- */
-export async function POST(request: NextRequest) {
-  const userId = await getOpsUserId();
-  if (!userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  try {
-    const body = await request.json();
-    const { id, name, description, trigger, action, scope, enabled } = body;
-
-    if (!id || !name || !trigger || !action) {
-      return NextResponse.json(
-        { error: 'Missing required fields: id, name, trigger, action' },
-        { status: 400 },
-      );
-    }
-
-    const rule = playbookEngine.createAutomationRule({
-      id,
-      name,
-      description,
-      trigger,
-      action,
-      scope: scope || {},
-      enabled,
-    });
-
-    return NextResponse.json({
-      success: true,
-      data: rule,
-    });
-  } catch (error) {
-    console.error('Automation rule creation error:', error);
-    return NextResponse.json({ error: 'Failed to create automation rule' }, { status: 500 });
-  }
+/** GET /api/ops/c2/automation-rules */
+export async function GET() {
+  return refuse();
 }
 
-/**
- * DELETE /api/ops/c2/automation-rules
- * Delete an automation rule.
- *
- * Query parameters:
- * - id: Rule ID to delete
- */
-export async function DELETE(request: NextRequest) {
-  const userId = await getOpsUserId();
-  if (!userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+/** POST /api/ops/c2/automation-rules */
+export async function POST() {
+  return refuse();
+}
 
-  try {
-    const searchParams = request.nextUrl.searchParams;
-    const ruleId = searchParams.get('id');
-
-    if (!ruleId) {
-      return NextResponse.json({ error: 'Rule ID required' }, { status: 400 });
-    }
-
-    // In a real implementation, would delete from database
-    playbookEngine.disableAutomationRule(ruleId);
-
-    return NextResponse.json({
-      success: true,
-      deleted: ruleId,
-    });
-  } catch (error) {
-    console.error('Automation rule deletion error:', error);
-    return NextResponse.json({ error: 'Failed to delete automation rule' }, { status: 500 });
-  }
+/** DELETE /api/ops/c2/automation-rules */
+export async function DELETE() {
+  return refuse();
 }
