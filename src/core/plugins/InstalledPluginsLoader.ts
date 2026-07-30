@@ -22,7 +22,7 @@ export async function loadInstalledPlugins(): Promise<number> {
     let loaded = 0;
 
     try {
-        const records = await prisma.installedPlugin.findMany();
+        const records = await prisma.installedPlugin.findMany({ where: { enabled: true } });
 
         for (const record of records) {
             try {

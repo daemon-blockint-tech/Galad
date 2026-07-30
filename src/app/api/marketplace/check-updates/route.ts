@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { getInstalledPlugins } from "@/lib/marketplace/repository";
 import { getClientIp } from "@/lib/rateLimit";
 import { marketplaceApiLimiter } from "@/lib/rateLimiters";
+import { getMarketplaceUrl } from "@/core/grondEnv";
 
-const MARKETPLACE_URL = process.env.NEXT_PUBLIC_MARKETPLACE_URL || "https://marketplace.worldwideview.dev";
+const MARKETPLACE_URL = getMarketplaceUrl() ?? "https://marketplace.maven-system.dev";
 
 export async function GET(request: Request) {
     const rateLimited = marketplaceApiLimiter.check(getClientIp(request));

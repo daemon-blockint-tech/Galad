@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
-import { isDemo, isPlatformAdmin } from "@/core/edition";
+import { isDemo, isDemoAdmin, isPlatformAdmin } from "@/core/edition";
 import { getPublicEdition } from "@/core/grondEnv";
 import { readJsonResponse } from "@/lib/http/readJsonResponse";
 import { internalRequestHeaders } from "@/lib/security/internalRequest";
@@ -198,6 +198,17 @@ export default async function proxy(req: NextRequest) {
         if (denied) return denied;
     }
 
+    const isAdminPath = path.startsWith("/admin") && !path.startsWith("/admin/forbidden");
+
+    // Demo serves everything else anonymously, but the admin console is exactly what
+    // the demo-admin role exists to keep separate — so it is gated before that.
+    if (isDemo && isAdminPath) {
+        const demoToken = await readToken(req);
+        if (!demoToken || !isDemoAdmin({ user: { role: demoToken.role } })) {
+            return NextResponse.redirect(new URL("/admin/forbidden", req.nextUrl));
+        }
+    }
+
     if (isDemo) {
         return continueWithTenant(req, tenantSubdomain);
     }
@@ -228,7 +239,7 @@ export default async function proxy(req: NextRequest) {
 
     const token = await readToken(req);
 
-    if (path.startsWith("/admin") && !path.startsWith("/admin/forbidden")) {
+    if (isAdminPath) {
         if (!token) {
             return NextResponse.redirect(new URL("/login", req.nextUrl));
         }

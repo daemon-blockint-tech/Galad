@@ -8,6 +8,7 @@ import { getClientIp } from "@/lib/rateLimit";
 import { isPluginInstallEnabled, isDemo, isDemoAdmin } from "@/core/edition";
 import { getVerifiedPluginIds } from "@/lib/marketplace/registryClient";
 import { auth } from "@/lib/auth";
+import { getMarketplaceUrl } from "@/core/grondEnv";
 
 export async function OPTIONS(request: Request) {
     return handlePreflight(request);
@@ -46,7 +47,7 @@ export async function POST(request: Request) {
         let finalManifest = manifest;
         const manifestCameFromCaller = Boolean(finalManifest);
         if (!finalManifest) {
-            const MARKETPLACE_URL = process.env.NEXT_PUBLIC_MARKETPLACE_URL || "https://marketplace.worldwideview.dev";
+            const MARKETPLACE_URL = getMarketplaceUrl() ?? "https://marketplace.maven-system.dev";
             try {
                 const res = await fetch(`${MARKETPLACE_URL}/api/plugins/${pluginId}`);
                 if (res.ok) {

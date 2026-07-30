@@ -37,7 +37,9 @@ export async function GET(request: Request) {
 
     try {
         const [records, verifiedIds] = await Promise.all([
-            prisma.installedPlugin.findMany(),
+            // Disabling must actually stop the bundle being imported, not just
+            // move it into a "disabled" list in the UI.
+            prisma.installedPlugin.findMany({ where: { enabled: true } }),
             getVerifiedPluginIds(),
         ]);
 

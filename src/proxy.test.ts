@@ -220,3 +220,38 @@ describe("admin route gate", () => {
         expect(res.headers.get("location")).toContain("/login");
     });
 });
+
+describe("demo edition admin gate", () => {
+    beforeEach(() => {
+        vi.stubGlobal("fetch", vi.fn(async () => Response.json({ status: "active" })));
+    });
+
+    it("does not serve /admin to an anonymous demo visitor", async () => {
+        // Regression: the `if (isDemo) return continueWithTenant(...)` early return
+        // sat above the admin gate, so demo handed the console to every visitor.
+        const proxy = await loadProxy("demo");
+        vi.mocked(getToken).mockResolvedValue(null);
+
+        const res = await proxy(request("demo.local", "/admin/overview"));
+
+        expect(res.headers.get("location")).toContain("/admin/forbidden");
+    });
+
+    it("does not serve /admin to a demo visitor holding a plain user role", async () => {
+        const proxy = await loadProxy("demo");
+        vi.mocked(getToken).mockResolvedValue({ sub: "u1", role: "user" });
+
+        const res = await proxy(request("demo.local", "/admin/overview"));
+
+        expect(res.headers.get("location")).toContain("/admin/forbidden");
+    });
+
+    it("still serves ordinary demo pages anonymously", async () => {
+        const proxy = await loadProxy("demo");
+        vi.mocked(getToken).mockResolvedValue(null);
+
+        const res = await proxy(request("demo.local", "/ops"));
+
+        expect(res.headers.get("location")).toBeNull();
+    });
+});
