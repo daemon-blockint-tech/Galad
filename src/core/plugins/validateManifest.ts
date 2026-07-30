@@ -25,41 +25,42 @@ const ALLOWED_ENTRY_CDNS = ["cdn.jsdelivr.net", "unpkg.com"];
 const LOCAL_ENTRY_HOSTS = ["localhost", "127.0.0.1"];
 
 /**
+ * A sentinel origin used only to resolve a relative entry the same way a browser
+ * would. It is never fetched; only the resulting origin is inspected.
+ */
+const RESOLUTION_BASE = "https://app.invalid/_next/static/chunks/";
+
+/**
  * Whether a manifest entry may be dynamically imported.
  *
- * The URL is parsed rather than substring-matched. Matching on the raw string
- * let `https://attacker.example/pwn.js#.grond.dev` and
- * `https://.grond.dev.attacker.example/x.js` through, and treated the
- * protocol-relative `//attacker.example/pwn.js` as a same-origin relative path —
- * each of which becomes attacker JS running on this app's origin.
+ * The entry is resolved with the same URL parser the browser uses for
+ * `import()`, then the RESULTING origin is checked. Deciding from the raw string
+ * failed twice, each time to a parser behaviour the checks did not model:
+ * `//host`, `/\\host` (a backslash is a slash for http), a leading space, and
+ * `/\n/host` (tab, LF and CR are stripped from anywhere in the input) all read
+ * as relative paths but resolve to a foreign origin. Resolving first means the
+ * decision is made on what will actually be fetched, so a parser quirk cannot
+ * change the answer.
  */
 export function isAllowedEntryUrl(entry: string): boolean {
-    const candidate = entry.trim();
-
-    // The URL parser removes tab, LF and CR from ANYWHERE in the input, not only
-    // the head, so "/\n/evil.com/x.js" reaches it as "//evil.com/x.js" and resolves
-    // to a foreign origin. Reject every C0 control and DEL wherever it appears, and
-    // a backslash with them, since http(s) parsing treats a backslash as a slash.
-    if (/[\u0000-\u001f\u007f\\]/.test(candidate)) return false;
-
-    // Protocol-relative: looks relative, resolves to a foreign origin.
-    if (candidate.startsWith("//")) return false;
-
-    if (candidate.startsWith("/") || candidate.startsWith("./") || candidate.startsWith("../")) {
-        return true;
-    }
-
-    let url: URL;
+    let resolved: URL;
     try {
-        url = new URL(candidate);
+        resolved = new URL(entry, RESOLUTION_BASE);
     } catch {
         return false;
     }
 
-    if (url.protocol === "http:" && LOCAL_ENTRY_HOSTS.includes(url.hostname)) return true;
-    if (url.protocol !== "https:") return false;
+    // Resolved back onto the sentinel: a genuinely same-origin relative path.
+    if (resolved.origin === new URL(RESOLUTION_BASE).origin) return true;
 
-    const host = url.hostname.toLowerCase();
+    if (resolved.protocol === "http:" && LOCAL_ENTRY_HOSTS.includes(resolved.hostname)) return true;
+    if (resolved.protocol !== "https:") return false;
+
+    // Credentials in the authority are never legitimate here and read as an
+    // allowlisted host to a human skimming the URL.
+    if (resolved.username || resolved.password) return false;
+
+    const host = resolved.hostname.toLowerCase().replace(/\.$/, "");
     if (ALLOWED_ENTRY_CDNS.includes(host)) return true;
     return ALLOWED_ENTRY_HOSTS.some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
 }

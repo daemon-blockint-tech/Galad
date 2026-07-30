@@ -58,6 +58,14 @@ entry: "/p.js"
 });
 
 describe("entry URL allowlist", () => {
+    it("accepts bare relative forms that resolve same-origin", () => {
+        // These look like hostnames but the URL parser resolves them against the
+        // page, so the browser fetches them from this app's own origin.
+        for (const entry of ["evil.com/x.js", "https:evil.com/x.js", "https:/evil.com/x.js"]) {
+            expect(isAllowedEntryUrl(entry)).toBe(true);
+        }
+    });
+
     // Each of these was ACCEPTED by the old substring matcher and becomes
     // attacker-controlled JS executing on the app origin via `await import(entry)`.
     it.each([
@@ -79,6 +87,7 @@ describe("entry URL allowlist", () => {
         ["http://attacker.example/pwn.js", "plain http remote"],
         ["javascript:alert(1)", "non-http scheme"],
         ["https://unpkg.com.attacker.example/pwn.js", "CDN name as a subdomain"],
+        ["https://xn--grnd-loa.dev/pwn.js", "punycode homograph of the allowlisted host"],
         ["http://localhost.attacker.example/pwn.js", "localhost as a label prefix"],
     ])("rejects %s (%s)", (entry) => {
         expect(isAllowedEntryUrl(entry)).toBe(false);
