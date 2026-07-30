@@ -135,3 +135,7 @@ worldwideview.code-workspace
 /playwright-report/
 /test-results/
 /playwright/.auth/
+
+# Local reference material and in-progress ontology drafts — not part of the build.
+# foundry/ is third-party documentation scraped for reference; do not commit it.
+foundry/
