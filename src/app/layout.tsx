@@ -16,6 +16,9 @@ export const metadata: Metadata = {
   description: "Grond — real-time geospatial intelligence and common operating picture.",
 };
 
+/** Runs before first paint; `wwv-theme` is the pre-rebrand key, read for one release. */
+const THEME_INIT_SCRIPT = `(function(){try{document.documentElement.setAttribute("data-theme",localStorage.getItem("grond-theme")||localStorage.getItem("wwv-theme")||"black")}catch(e){document.documentElement.setAttribute("data-theme","black")}})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -38,8 +41,8 @@ export default function RootLayout({
         )}
         {/* Load CesiumJS base styles (optional, but helps with UI widgets if used later) */}
         <link rel="stylesheet" href="/cesium/Widgets/widgets.css" />
-        {/* Blocking theme before paint — plain script in head (not next/script in body) */}
-        <script src="/theme-init.js" />
+        {/* Applies the stored theme before first paint to avoid a flash of the default theme. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body suppressHydrationWarning>
         {children}

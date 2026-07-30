@@ -3,6 +3,8 @@
  * @description Named Earth Engine imagery presets for Grond basemap layers.
  */
 
+import type { EeImage } from "@google/earthengine";
+
 import type { EarthEngineModule } from "./client";
 
 export const EARTH_ENGINE_PRESET_IDS = [
@@ -61,10 +63,7 @@ export function isEarthEnginePresetId(id: string): id is EarthEnginePresetId {
 }
 
 export interface PresetBuildResult {
-    /** Earth Engine `ee.Image` instance. */
-    image: {
-        getMapId: (vis: Record<string, unknown>) => unknown;
-    };
+    image: EeImage;
     visParams: Record<string, unknown>;
 }
 
@@ -90,13 +89,7 @@ export function buildPresetImage(
                 .filterDate(start, end)
                 .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 20))
                 .linkCollection(csPlus, [QA_BAND])
-                .map((img) => {
-                    const scene = img as {
-                        select: (band: string) => { gte: (threshold: number) => unknown };
-                        updateMask: (mask: unknown) => unknown;
-                    };
-                    return scene.updateMask(scene.select(QA_BAND).gte(CLEAR_THRESHOLD));
-                });
+                .map((scene) => scene.updateMask(scene.select(QA_BAND).gte(CLEAR_THRESHOLD)));
             return {
                 image: collection.median(),
                 visParams: {
@@ -176,13 +169,9 @@ export function buildPresetImage(
             const collection = ee.ImageCollection(
                 "AIRBUS/SPOT_2_4_5/BRAZIL/2007_2009/MS_NC/V1",
             );
-            const masked = collection.map((img) => {
-                const scene = img as {
-                    select: (band: string) => unknown;
-                    updateMask: (mask: unknown) => unknown;
-                };
-                return scene.updateMask(scene.select("cloud_mask"));
-            });
+            const masked = collection.map((scene) =>
+                scene.updateMask(scene.select("cloud_mask")),
+            );
             return {
                 image: masked.mosaic(),
                 visParams: {

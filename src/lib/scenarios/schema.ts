@@ -10,7 +10,7 @@ const entityTemplateSchema = z.object({
     altitude: z.number().optional(),
     heading: z.number().optional(),
     speed: z.number().optional(),
-    properties: z.record(z.unknown()).optional(),
+    properties: z.record(z.string(), z.unknown()).optional(),
 });
 
 const motionSchema = z.object({

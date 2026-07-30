@@ -20,7 +20,8 @@ describe("fetchEarthEngineConfigured", () => {
     it("caches the health response", async () => {
         fetchMock.mockResolvedValue({
             ok: true,
-            json: async () => ({ configured: true }),
+            status: 200,
+            text: async () => JSON.stringify({ configured: true }),
         });
 
         await expect(fetchEarthEngineConfigured()).resolves.toBe(true);

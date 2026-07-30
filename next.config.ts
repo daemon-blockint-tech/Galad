@@ -14,7 +14,7 @@ const nextConfig: NextConfig = {
     "/*": ["./scripts/**/*"],
   },
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   async headers() {
     return [

@@ -118,7 +118,8 @@ describe("createImageryProvider", () => {
         fetchMock
             .mockResolvedValueOnce({
                 ok: true,
-                json: async () => ({ configured: true }),
+                status: 200,
+                text: async () => JSON.stringify({ configured: true }),
             })
             .mockResolvedValueOnce({
                 ok: true,
@@ -135,7 +136,8 @@ describe("createImageryProvider", () => {
     it("uses OSM when Earth Engine health reports not configured", async () => {
         fetchMock.mockResolvedValueOnce({
             ok: true,
-            json: async () => ({ configured: false }),
+            status: 200,
+            text: async () => JSON.stringify({ configured: false }),
         });
 
         const provider = await createImageryProvider("gee-sentinel-rgb");
@@ -148,7 +150,8 @@ describe("createImageryProvider", () => {
         fetchMock
             .mockResolvedValueOnce({
                 ok: true,
-                json: async () => ({ configured: true }),
+                status: 200,
+                text: async () => JSON.stringify({ configured: true }),
             })
             .mockResolvedValueOnce({
                 ok: true,
@@ -181,7 +184,7 @@ describe("createImageryProvider", () => {
         vi.stubEnv("NEXT_PUBLIC_CESIUM_ION_TOKEN", "test-ion-token");
         const provider = await createImageryProvider("blue-marble");
         expect(IonImageryProvider.fromAssetId).toHaveBeenCalledWith(3845);
-        expect((provider as { _type: string })._type).toBe("Ion");
+        expect((provider as unknown as { _type: string })._type).toBe("Ion");
         vi.unstubAllEnvs();
     });
 
