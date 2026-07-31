@@ -43,8 +43,13 @@ export async function GET(request: Request) {
 
     // Separate cache entries for user-provided keys vs default. Keyed off the
     // *accepted* key, so a too-short header cannot namespace the server key's cache.
-    const cachePrefix = isValidUserKey ? `user:${userKey.slice(0, 8)}:` : "";
-    const cacheKey = `${cachePrefix}${input.toLowerCase().trim()}`;
+    // JSON-encoded, not concatenated: the query is attacker-controlled and may
+    // contain the separator, so `${prefix}${input}` let a caller with no key forge
+    // a key-holder's namespace — reading responses billed to their key, and
+    // pre-filling the entry they would be served. JSON.stringify of a fixed-shape
+    // array is injective, so no input can impersonate another namespace.
+    const cacheNamespace = isValidUserKey ? userKey.slice(0, 8) : null;
+    const cacheKey = JSON.stringify([cacheNamespace, input.toLowerCase().trim()]);
     const cached = cache.get(cacheKey);
     if (cached && Date.now() < cached.expiresAt) {
         return NextResponse.json(cached.data);

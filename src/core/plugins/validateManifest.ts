@@ -147,10 +147,16 @@ export function validateManifest(
         errors.push("capabilities must be a non-empty array");
     }
 
-    // Entry point validation - critical for preventing RCE
-    if (!manifest.entry?.trim()) {
+    // Entry point validation - critical for preventing RCE.
+    //
+    // Judged on the RAW entry, with no trim(): the loader resolves the raw string,
+    // and String.prototype.trim strips characters the URL parser does not (NBSP,
+    // BOM, ideographic space). Trimming here meant this function and the loader
+    // could reach different verdicts on the same manifest — the same
+    // validate-one-form-use-another gap this whole area kept failing on.
+    if (!manifest.entry || manifest.entry.trim() === "") {
         errors.push("Missing required field: entry");
-    } else if (!isAllowedEntryUrl(manifest.entry.trim())) {
+    } else if (resolveEntryUrl(manifest.entry) === null) {
         errors.push("entry URL must be a relative path, CDN, localhost, or grond.dev domain");
     }
 

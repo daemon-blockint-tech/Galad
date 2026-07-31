@@ -33,6 +33,34 @@ function isLoopbackHost(hostname: string): boolean {
     return host === "127.0.0.1" || host === "localhost" || host === "::1";
 }
 
+/** Domains under which a workspace is addressed as a single leading label. */
+const APP_DOMAINS = ["app.grond.dev", "app.worldwideview.dev", "localhost"];
+
+/**
+ * The workspace this Host addresses, or null.
+ *
+ * Derived by splitting labels rather than by `includes` + chained `replace`. That
+ * pair was not injective: `acme.localhost.app.grond.dev` stripped down to "acme",
+ * the same tenant as `acme.app.grond.dev`, and `acme.app.grond.dev.evil.tld`
+ * passed the substring test and yielded "acme.evil.tld". This value keys every
+ * tenant-scoped query, so two hosts must never collapse to one tenant.
+ */
+export function tenantFromHost(host: string): string | null {
+    const hostname = host.toLowerCase().split(":")[0].replace(/\.$/, "");
+
+    for (const domain of APP_DOMAINS) {
+        const suffix = `.${domain}`;
+        if (!hostname.endsWith(suffix)) continue;
+
+        const label = hostname.slice(0, -suffix.length);
+        // Exactly one label: "acme" yes, "acme.localhost" no.
+        if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label)) return null;
+        if (label === "app" || label === "localhost") return null;
+        return label;
+    }
+    return null;
+}
+
 /** Apex-only paths that predate workspaces and belong on the marketing hub. */
 const HUB_REDIRECT_PATHS = new Set(["/", "/register", "/dashboard", "/create-workspace"]);
 
@@ -170,13 +198,7 @@ export default async function proxy(req: NextRequest) {
     const isCloudDeploy = getPublicEdition() === "cloud";
 
     if (isCloudDeploy) {
-        const isApp = hostname.includes(".app.grond.dev") || hostname.includes(".app.worldwideview.dev") || hostname.includes(".localhost");
-        if (isApp) {
-            const subdomain = hostname.replace(".app.grond.dev", "").replace(".app.worldwideview.dev", "").replace(".localhost", "").split(":")[0];
-            if (subdomain && subdomain !== "app" && subdomain !== "localhost") {
-                tenantSubdomain = subdomain;
-            }
-        }
+        tenantSubdomain = tenantFromHost(hostname);
     }
 
     // Cloud host guard. `/api/internal/*` is the middleware's own lane — it is
