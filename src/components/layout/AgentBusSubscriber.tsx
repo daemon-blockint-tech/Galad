@@ -118,8 +118,15 @@ export function AgentBusSubscriber() {
             }
         };
         es.onerror = (err) => {
-            // EventSource auto-reconnects on its own with the `retry:` value
-            // we send from the server. Just log; don't tear down.
+            // A CLOSED stream means the server refused it outright — on demo there
+            // is no session, so /api/agent/stream 401s and EventSource would
+            // otherwise retry for the life of the tab, once per anonymous visitor.
+            // A transient drop leaves readyState CONNECTING, which we let it retry.
+            if (es.readyState === EventSource.CLOSED) {
+                console.debug("[AgentBus] stream closed by the server; not retrying", err);
+                es.close();
+                return;
+            }
             console.debug("[AgentBus] stream error (auto-reconnecting)", err);
         };
 

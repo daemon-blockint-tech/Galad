@@ -35,3 +35,20 @@ To help us quickly validate and fix the issue, please include the following in y
 * **Disclosure:** Once the vulnerability is patched and a new version is released, we will publish a security advisory. We are happy to credit you for the discovery if you would like!
 
 *Note: As an open-source project, we currently do not offer financial bug bounties, but we deeply appreciate your contributions to keeping our users safe.*
+
+## Development-only trust boundaries
+
+These are deliberate conveniences that exist only under `next dev`. They are not
+hardened, and a machine running the dev server should be treated accordingly.
+
+- **Unpacked plugin loading over websocket.** `DevModeSubscriber` dials
+  `ws://localhost:24601` and loads any manifest pushed on a `plugin:added` or
+  `plugin:updated` frame, without the trust stamp or approval dialog that gate
+  the marketplace path. Any local process that binds that port first can run code
+  in the dev app's origin. Production builds never open the socket.
+- **Relaxed plugin entry URLs.** `isAllowedEntryUrl` accepts any path on
+  `localhost`/`127.0.0.1` outside production, so the plugin CLI can serve a bundle
+  from its own dev server. In production a localhost entry must sit under a static
+  bundle directory like every other same-origin entry.
+- **Sideload and unpacked-load endpoints.** `/api/marketplace/sideload` and
+  `/api/dev/load-unpacked` return 403 unless `NODE_ENV === "development"`.

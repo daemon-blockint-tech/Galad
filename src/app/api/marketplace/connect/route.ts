@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import * as client from "openid-client";
 import { getMarketplaceUrl } from "@/core/grondEnv";
 
+/**
+ * `__Host-` cookies are rejected unless Path is exactly "/", so scoping these to
+ * the callback route meant the browser dropped them and every HTTPS deployment
+ * failed the state check — the connect flow could not complete at all. They are
+ * short-lived PKCE values, cleared by the callback.
+ */
+const PKCE_COOKIE_PATH = "/";
+
 export async function GET(req: NextRequest) {
     const state = client.randomState();
     const code_verifier = client.randomPKCECodeVerifier();
@@ -27,7 +35,7 @@ export async function GET(req: NextRequest) {
         httpOnly: true,
         secure: isHttps,
         sameSite: "lax",
-        path: "/api/marketplace/callback",
+        path: PKCE_COOKIE_PATH,
         maxAge: 60 * 10 // 10 minutes
     });
 
@@ -35,7 +43,7 @@ export async function GET(req: NextRequest) {
         httpOnly: true,
         secure: isHttps,
         sameSite: "lax",
-        path: "/api/marketplace/callback",
+        path: PKCE_COOKIE_PATH,
         maxAge: 60 * 10 // 10 minutes
     });
 

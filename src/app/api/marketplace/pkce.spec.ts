@@ -1,3 +1,4 @@
+// @vitest-environment node
 import {
  describe, it, expect, vi, beforeEach
 } from "vitest";
@@ -14,6 +15,13 @@ vi.mock("openid-client", () => ({
     validateAuthResponse: vi.fn(),
     authorizationCodeGrant: vi.fn().mockResolvedValue({ access_token: "mock-token" })
 }));
+
+vi.mock("@/lib/marketplace/auth", () => ({
+    // The callback now requires an admin; these tests cover the PKCE exchange.
+    validateMarketplaceAuth: vi.fn(async () => null),
+}));
+
+vi.mock("@/lib/tenant", () => ({ getTenantId: vi.fn(async () => null) }));
 
 vi.mock("@/lib/auth/encryption", () => ({
     encryptCredential: vi.fn().mockResolvedValue({
@@ -55,7 +63,11 @@ describe("PKCE Flow", () => {
             expect(cookies).toContain("HttpOnly");
             expect(cookies).toContain("Secure");
             expect(cookies).toContain("SameSite=lax");
-            expect(cookies).toContain("Path=/api/marketplace/callback");
+            // __Host- cookies are rejected unless Path is exactly "/". Scoping them
+            // to the callback route meant the browser stored nothing, so every HTTPS
+            // deployment failed the state check and the connect flow could not finish.
+            expect(cookies).toContain("Path=/");
+            expect(cookies).not.toContain("Path=/api/marketplace/callback");
             // Check __Host- prefix if in production (assuming https testing context)
             expect(cookies).toMatch(/__Host-pkce_verifier/);
         });
