@@ -11,6 +11,35 @@ export async function OPTIONS(request: Request) {
     return handlePreflight(request);
 }
 
+/**
+ * The stored `config` is the whole manifest, which for a declarative plugin
+ * includes `dataSource.headers` — Bearer tokens and API keys. This route is
+ * anonymous on demo and reflects any Origin, so returning rows verbatim published
+ * those keys to any page that asked. The plugin list only needs three fields out
+ * of the manifest to render, so it gets exactly those.
+ */
+function toListedPlugin(record: { pluginId: string; version: string; config: string; installedAt: Date | string; enabled?: boolean }) {
+    let display: { name?: unknown; icon?: unknown; trust?: unknown } = {};
+    try {
+        const parsed: unknown = JSON.parse(record.config);
+        if (parsed && typeof parsed === "object") display = parsed as typeof display;
+    } catch {
+        // A row we cannot parse simply has no display fields.
+    }
+
+    return {
+        pluginId: record.pluginId,
+        version: record.version,
+        installedAt: record.installedAt,
+        enabled: record.enabled,
+        config: JSON.stringify({
+            name: typeof display.name === "string" ? display.name : undefined,
+            icon: typeof display.icon === "string" ? display.icon : undefined,
+            trust: typeof display.trust === "string" ? display.trust : undefined,
+        }),
+    };
+}
+
 export async function GET(request: Request) {
     const rateLimited = marketplaceApiLimiter.check(getClientIp(request));
     if (rateLimited) return withCors(rateLimited, request);
@@ -27,8 +56,8 @@ export async function GET(request: Request) {
         const dbPlugins = await getInstalledPlugins();
         const dbMap = new Map(dbPlugins.map((p: any) => [p.pluginId, p]));
 
-        // Collect all DB plugins (enabled and disabled)
-        const plugins = dbPlugins;
+        // All DB plugins, enabled and disabled, reduced to display fields.
+        const plugins = dbPlugins.map(toListedPlugin);
 
         let canManagePlugins = !isDemo;
         if (isDemo) {

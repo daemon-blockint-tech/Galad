@@ -26,7 +26,15 @@ function getSafeRedirect(url: string | null): string {
         const resolved = new URL(url, window.location.origin);
         if (resolved.origin !== window.location.origin) return "/ops";
         if (resolved.pathname.startsWith("/api")) return "/ops";
-        return `${resolved.pathname}${resolved.search}${resolved.hash}`;
+
+        const path = `${resolved.pathname}${resolved.search}${resolved.hash}`;
+        // Resolving is not enough on its own: "/..//evil.com/x" pops the ".."
+        // after the host is parsed, so it resolves same-origin with a pathname of
+        // "//evil.com/x" — and router.push re-parses that string, where a leading
+        // "//" is once again an authority. The value has to survive the same test
+        // it was resolved under.
+        if (path.startsWith("//")) return "/ops";
+        return path;
     } catch {
         return "/ops";
     }
