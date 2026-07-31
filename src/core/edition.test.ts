@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { resolveEdition } from "./edition";
 import type { Edition } from "./edition";
 
@@ -57,5 +57,49 @@ describe("isHistoryEnabled (derived from edition)", () => {
     it("is enabled on cloud edition", () => {
         const historyEnabled = resolveEdition("cloud") !== "demo";
         expect(historyEnabled).toBe(true);
+    });
+});
+
+describe("isPlatformAdmin (who may reach /admin)", () => {
+    // The middleware and the (admin) layout both gate the console. They used to
+    // disagree on demo: the middleware required the demo-admin role while this
+    // accepted any account carrying role "admin".
+    const ORIGINAL = process.env.NEXT_PUBLIC_MAVEN_EDITION;
+
+    async function load(edition: string) {
+        process.env.NEXT_PUBLIC_MAVEN_EDITION = edition;
+        vi.resetModules(); // isDemo is resolved at module load
+        return import("./edition");
+    }
+
+    afterEach(() => {
+        if (ORIGINAL === undefined) delete process.env.NEXT_PUBLIC_MAVEN_EDITION;
+        else process.env.NEXT_PUBLIC_MAVEN_EDITION = ORIGINAL;
+    });
+
+    it("admits role admin off demo", async () => {
+        const { isPlatformAdmin } = await load("local");
+        expect(isPlatformAdmin({ user: { role: "admin" } })).toBe(true);
+    });
+
+    it("refuses role user off demo", async () => {
+        const { isPlatformAdmin } = await load("local");
+        expect(isPlatformAdmin({ user: { role: "user" } })).toBe(false);
+    });
+
+    it("refuses a plain admin account on demo", async () => {
+        const { isPlatformAdmin } = await load("demo");
+        expect(isPlatformAdmin({ user: { role: "admin" } })).toBe(false);
+    });
+
+    it("admits the demo admin on demo", async () => {
+        const { isPlatformAdmin, DEMO_ADMIN_ROLE } = await load("demo");
+        expect(isPlatformAdmin({ user: { role: DEMO_ADMIN_ROLE } })).toBe(true);
+    });
+
+    it("refuses an absent session", async () => {
+        const { isPlatformAdmin } = await load("local");
+        expect(isPlatformAdmin(null)).toBe(false);
+        expect(isPlatformAdmin({})).toBe(false);
     });
 });

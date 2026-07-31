@@ -25,9 +25,14 @@ const localCredentialsProvider = Credentials({
 
         // Demo edition: virtual admin login (no DB user required)
         const adminSecret = getDemoAdminSecret();
-        const secretMatch = adminSecret
-            && password.length === adminSecret.length
-            && timingSafeEqual(Buffer.from(password), Buffer.from(adminSecret));
+        // Compare byte lengths, not string lengths: timingSafeEqual throws on
+        // mismatched buffers, so a multi-byte password of the same character
+        // length turned a failed login into a 500.
+        const passwordBytes = Buffer.from(password);
+        const secretBytes = adminSecret ? Buffer.from(adminSecret) : null;
+        const secretMatch = secretBytes !== null
+            && passwordBytes.length === secretBytes.length
+            && timingSafeEqual(passwordBytes, secretBytes);
         if (isDemo && secretMatch && email === "admin") {
             return {
                 id: "demo-admin",

@@ -255,3 +255,29 @@ describe("demo edition admin gate", () => {
         expect(res.headers.get("location")).toBeNull();
     });
 });
+
+describe("admin gate is not skipped by the static-asset shortcut", () => {
+    beforeEach(() => {
+        vi.stubGlobal("fetch", vi.fn(async () => Response.json({ status: "active" })));
+    });
+
+    it("still gates an /admin path containing a dot", async () => {
+        // `path.includes(".")` is a filename heuristic; an auth check must not sit
+        // beneath it, or /admin/anything.json walks straight past the gate.
+        const proxy = await loadProxy("local");
+        vi.mocked(getToken).mockResolvedValue({ sub: "u1", role: "user" });
+
+        const res = await proxy(request("app.local", "/admin/overview.json"));
+
+        expect(res.headers.get("location")).toContain("/admin/forbidden");
+    });
+
+    it("still lets real static assets through untouched", async () => {
+        const proxy = await loadProxy("local");
+        vi.mocked(getToken).mockResolvedValue(null);
+
+        const res = await proxy(request("app.local", "/cesium/Widgets/widgets.css"));
+
+        expect(res.headers.get("location")).toBeNull();
+    });
+});

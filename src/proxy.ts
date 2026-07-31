@@ -213,12 +213,16 @@ export default async function proxy(req: NextRequest) {
         return continueWithTenant(req, tenantSubdomain);
     }
 
+    // `path.includes(".")` treats anything with a dot as a static asset, which
+    // would let /admin/anything.json skip the gate below. An auth check must not
+    // sit under a filename heuristic.
     if (
-        path.startsWith("/_next")
-        || path.startsWith("/api")
-        || path.startsWith("/data")
-        || path.startsWith("/cesium")
-        || path.includes(".")
+        !isAdminPath
+        && (path.startsWith("/_next")
+            || path.startsWith("/api")
+            || path.startsWith("/data")
+            || path.startsWith("/cesium")
+            || path.includes("."))
     ) {
         return continueWithTenant(req, tenantSubdomain);
     }

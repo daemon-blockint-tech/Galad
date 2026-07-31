@@ -56,6 +56,9 @@ export function isDemoAdmin(session: any): boolean {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function isPlatformAdmin(session: any): boolean {
     if (!session?.user) return false;
-    if (session.user.role === "admin") return true;
-    return isDemoAdmin(session);
+    // On demo the console belongs to the operator holding the demo secret, not to
+    // any account that happens to carry role "admin". The middleware already
+    // enforced that; accepting a plain admin here made the two gates disagree.
+    if (isDemo) return isDemoAdmin(session);
+    return session.user.role === "admin";
 }
