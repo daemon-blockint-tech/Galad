@@ -6,6 +6,9 @@ import { validateManifest } from "./validateManifest";
 
 vi.mock("./validateManifest", () => ({
   validateManifest: vi.fn(),
+  // The loader imports the resolved entry rather than the raw manifest string,
+  // so the canonical form has to come back from the mock too.
+  resolveEntryUrl: vi.fn((entry: string) => entry || null),
 }));
 
 describe("loadPluginFromManifest", () => {

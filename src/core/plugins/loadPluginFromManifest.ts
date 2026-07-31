@@ -5,7 +5,7 @@
 
 import type { WorldPlugin } from "./PluginTypes";
 import type { PluginManifest } from "./PluginManifest";
-import { validateManifest } from "./validateManifest";
+import { validateManifest, resolveEntryUrl } from "./validateManifest";
 
 /**
  * Custom error class for failures occurring during the plugin manifest loading process.
@@ -107,8 +107,19 @@ export async function loadPluginFromManifest(
         );
     }
 
+    // Import the resolved entry, never the raw manifest string. validateManifest
+    // checked `manifest.entry.trim()`, so importing `manifest.entry` meant the
+    // string that was approved and the string that gets executed were not the same
+    // one — the gap every entry-validation bypass so far has lived in.
+    const entry = resolveEntryUrl(manifest.entry ?? "");
+    if (!entry) {
+        throw new ManifestLoadError(manifest.id, "Entry URL is not permitted", [
+            "entry URL must be a relative path, CDN, localhost, or grond.dev domain",
+        ]);
+    }
+
     try {
-        return await loadBundlePlugin(manifest.entry!);
+        return await loadBundlePlugin(entry);
     } catch (err) {
         if (err instanceof ManifestLoadError) throw err;
         throw new ManifestLoadError(

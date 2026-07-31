@@ -43,51 +43,73 @@ const RESOLUTION_BASE = "https://app.invalid/";
 const ALLOWED_ENTRY_PATH_PREFIXES = ["/plugins/", "/plugins-local/", "/e2e-fixtures/"];
 
 /**
- * Whether a manifest entry may be dynamically imported.
+ * Resolves a manifest entry to the exact string that must be imported, or null
+ * if it may not be imported at all.
  *
- * The entry is resolved with the same URL parser the browser uses for
- * `import()`, then the RESULTING origin is checked. Deciding from the raw string
- * failed twice, each time to a parser behaviour the checks did not model:
- * `//host`, `/\\host` (a backslash is a slash for http), a leading space, and
- * `/\n/host` (tab, LF and CR are stripped from anywhere in the input) all read
- * as relative paths but resolve to a foreign origin. Resolving first means the
- * decision is made on what will actually be fetched, so a parser quirk cannot
- * change the answer.
+ * This returns the canonical form rather than a boolean on purpose. Every
+ * self-inflicted regression in this area came from validating one representation
+ * of a value and then using another: the checks passed on the string as written
+ * while the browser resolved something else ("//host", "/\\host" - a backslash is
+ * a slash for http - and "/\n/host", since tab, LF and CR are stripped from
+ * anywhere in the input). Handing the caller the resolved value closes that gap
+ * by construction: there is no second parse to disagree with the first.
+ *
+ * Same-origin entries come back ROOT-ABSOLUTE. The validator resolves against a
+ * sentinel base, but the browser resolves an entry against the current chunk URL,
+ * so a relative entry would resolve differently in each. A root-absolute path is
+ * base-independent, which removes that divergence too.
  */
-export function isAllowedEntryUrl(entry: string): boolean {
+export function resolveEntryUrl(entry: string): string | null {
     let resolved: URL;
     try {
         resolved = new URL(entry, RESOLUTION_BASE);
     } catch {
-        return false;
+        return null;
     }
 
     const isBundlePath = ALLOWED_ENTRY_PATH_PREFIXES.some(
         (prefix) => resolved.pathname.startsWith(prefix),
     );
 
+    /** Base-independent path; re-checked so it cannot itself read as an authority. */
+    const samePath = () => {
+        const path = `${resolved.pathname}${resolved.search}${resolved.hash}`;
+        return path.startsWith("/") && !path.startsWith("//") ? path : null;
+    };
+
     // Resolved back onto the sentinel: a genuinely same-origin path. Allowed only
-    // under a static bundle directory — see ALLOWED_ENTRY_PATH_PREFIXES.
-    if (resolved.origin === new URL(RESOLUTION_BASE).origin) return isBundlePath;
+    // under a static bundle directory - see ALLOWED_ENTRY_PATH_PREFIXES.
+    if (resolved.origin === new URL(RESOLUTION_BASE).origin) {
+        return isBundlePath ? samePath() : null;
+    }
 
     if (resolved.protocol === "http:" && LOCAL_ENTRY_HOSTS.includes(resolved.hostname)) {
         // The plugin CLI serves an unpacked bundle from its own dev server on some
-        // other localhost port, and those paths are arbitrary — so this stays open
+        // other localhost port, and those paths are arbitrary - so this stays open
         // in development. In production a localhost entry resolves to the viewer's
         // own machine, which for a self-hosted install is this app: without the
         // path check, "http://localhost:3000/api/camera/proxy/iframe?url=..." would
         // walk straight around the restriction above.
-        return process.env.NODE_ENV !== "production" || isBundlePath;
+        const permitted = process.env.NODE_ENV !== "production" || isBundlePath;
+        return permitted ? resolved.href : null;
     }
-    if (resolved.protocol !== "https:") return false;
+    if (resolved.protocol !== "https:") return null;
 
     // Credentials in the authority are never legitimate here and read as an
     // allowlisted host to a human skimming the URL.
-    if (resolved.username || resolved.password) return false;
+    if (resolved.username || resolved.password) return null;
 
     const host = resolved.hostname.toLowerCase().replace(/\.$/, "");
-    if (ALLOWED_ENTRY_CDNS.includes(host)) return true;
-    return ALLOWED_ENTRY_HOSTS.some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
+    if (ALLOWED_ENTRY_CDNS.includes(host)) return resolved.href;
+    const allowedHost = ALLOWED_ENTRY_HOSTS.some(
+        (allowed) => host === allowed || host.endsWith(`.${allowed}`),
+    );
+    return allowedHost ? resolved.href : null;
+}
+
+/** Boolean form of {@link resolveEntryUrl}, for callers that only gate. */
+export function isAllowedEntryUrl(entry: string): boolean {
+    return resolveEntryUrl(entry) !== null;
 }
 
 /**
