@@ -126,9 +126,16 @@ export async function GET(request: Request) {
                 // stamping rule in the install routes.
                 if (m.trust === "verified" && !verifiedIds.has(m.id)) {
                     m.trust = "unverified";
+                    m.revoked = true;
                 }
                 return m;
-            });
+            })
+            // Demoting relies on the client's unverified dialog to gate the plugin,
+            // but demo skips that dialog (installs there are demo-admin-only, so the
+            // admin is taken to have vetted them). A revoked plugin was vetted under
+            // a claim the registry has since withdrawn, so on demo it is dropped
+            // outright rather than loaded silently into every anonymous visitor.
+            .filter((m: any) => !(isDemo && m.revoked));
 
         // Strip sensitive configuration fields on demo for non-admin visitors
         if (isDemo && !isDemoAdmin(await auth())) {

@@ -123,9 +123,16 @@ export function useMarketplaceSync(hostReady: boolean) {
                 if (!manifest.id) continue;
                 if (loadedIds.current.has(manifest.id)) continue;
 
-                // Unverified + not yet approved → collect for batch review
-                // On demo, skip the gate — admin already approved by installing
-                if (!isDemo && manifest.trust === "unverified" && !isManifestApproved(manifest, approved)) {
+                // Allowlist, not a blocklist: gating on trust === "unverified" meant
+                // any other value — a new trust level, a typo, a manifest written
+                // before the field existed — loaded with no prompt at all. Only
+                // registry-verified and built-in plugins skip review.
+                const trusted = manifest.trust === "verified" || manifest.trust === "built-in";
+
+                // On demo the gate is skipped: installs there are demo-admin-only, so
+                // the admin vetted the plugin. Revoked ones never reach here — the
+                // load route drops them on demo rather than relying on this dialog.
+                if (!isDemo && !trusted && !isManifestApproved(manifest, approved)) {
                     newPending.push(manifest);
                     continue;
                 }

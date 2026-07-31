@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getInstalledPlugins } from "@/lib/marketplace/repository";
+import { validateMarketplaceAuth } from "@/lib/marketplace/auth";
 import { getClientIp } from "@/lib/rateLimit";
 import { marketplaceApiLimiter } from "@/lib/rateLimiters";
 import { getMarketplaceUrl } from "@/core/grondEnv";
@@ -9,6 +10,12 @@ const MARKETPLACE_URL = getMarketplaceUrl() ?? "https://marketplace.maven-system
 export async function GET(request: Request) {
     const rateLimited = marketplaceApiLimiter.check(getClientIp(request));
     if (rateLimited) return rateLimited;
+
+    // The response enumerates every installed plugin id and version — a map of
+    // what this instance runs, and of which versions are behind. Only callers who
+    // can already see the plugin list get it.
+    const authError = await validateMarketplaceAuth(request);
+    if (authError) return authError;
 
     try {
         // Fetch currently installed plugins from PostgreSQL
