@@ -48,7 +48,8 @@ hardened, and a machine running the dev server should be treated accordingly.
   in the dev app's origin. Production builds never open the socket.
 - **Relaxed plugin entry URLs.** `isAllowedEntryUrl` accepts any path on
   `localhost`/`127.0.0.1` outside production, so the plugin CLI can serve a bundle
-  from its own dev server. In production a localhost entry must sit under a static
-  bundle directory like every other same-origin entry.
+  from its own dev server. In production a localhost entry is refused outright: it
+  would name the viewer's own machine rather than the app. A self-hosted install
+  serving its own bundles uses a relative entry, which is unaffected.
 - **Sideload and unpacked-load endpoints.** `/api/marketplace/sideload` and
   `/api/dev/load-unpacked` return 403 unless `NODE_ENV === "development"`.

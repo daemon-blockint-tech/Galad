@@ -85,13 +85,16 @@ export function resolveEntryUrl(entry: string): string | null {
 
     if (resolved.protocol === "http:" && LOCAL_ENTRY_HOSTS.includes(resolved.hostname)) {
         // The plugin CLI serves an unpacked bundle from its own dev server on some
-        // other localhost port, and those paths are arbitrary - so this stays open
-        // in development. In production a localhost entry resolves to the viewer's
-        // own machine, which for a self-hosted install is this app: without the
-        // path check, "http://localhost:3000/api/camera/proxy/iframe?url=..." would
-        // walk straight around the restriction above.
-        const permitted = process.env.NODE_ENV !== "production" || isBundlePath;
-        return permitted ? resolved.href : null;
+        // other localhost port, with arbitrary paths — so this branch exists for
+        // development and only for development.
+        //
+        // In production a localhost entry names the VIEWER's machine, not this
+        // app, so it points every member's browser at whatever they happen to be
+        // running locally. A self-hosted install serving its own bundles uses a
+        // relative entry, which takes the same-origin branch above and is
+        // unaffected. Note the host arrives normalised: "http://2130706433/..." is
+        // 127.0.0.1, so a decimal or octal form cannot slip past this.
+        return process.env.NODE_ENV === "production" ? null : resolved.href;
     }
     if (resolved.protocol !== "https:") return null;
 
@@ -99,7 +102,14 @@ export function resolveEntryUrl(entry: string): string | null {
     // allowlisted host to a human skimming the URL.
     if (resolved.username || resolved.password) return null;
 
-    const host = resolved.hostname.toLowerCase().replace(/\.$/, "");
+    // Normalise onto the URL itself, not into a local variable. Lowercasing and
+    // dropping the root dot only for the comparison, then returning
+    // `resolved.href`, would authorise "sub.grond.dev." and hand back a different
+    // host than the one that was checked — the same class of gap this function
+    // exists to close.
+    resolved.hostname = resolved.hostname.toLowerCase().replace(/\.$/, "");
+    const host = resolved.hostname;
+
     if (ALLOWED_ENTRY_CDNS.includes(host)) return resolved.href;
     const allowedHost = ALLOWED_ENTRY_HOSTS.some(
         (allowed) => host === allowed || host.endsWith(`.${allowed}`),
