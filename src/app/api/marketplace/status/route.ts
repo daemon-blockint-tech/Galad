@@ -54,7 +54,6 @@ export async function GET(request: Request) {
 
     try {
         const dbPlugins = await getInstalledPlugins();
-        const dbMap = new Map(dbPlugins.map((p: any) => [p.pluginId, p]));
 
         // All DB plugins, enabled and disabled, reduced to display fields.
         const plugins = dbPlugins.map(toListedPlugin);
