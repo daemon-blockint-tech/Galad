@@ -23,11 +23,18 @@ export function isTrustedInstallNavigation(request: Request): boolean {
     if (request.headers.get("sec-fetch-dest") !== "document") return false;
 
     const site = request.headers.get("sec-fetch-site");
-    if (site === "same-origin" || site === "same-site" || site === "none") return true;
-    if (site !== "cross-site") return false;
+    if (site === "same-origin" || site === "none") return true;
 
-    // A cross-site navigation carries no Origin, so the referring page is the
-    // only signal for who sent the user here.
+    // "same-site" is deliberately NOT trusted on its own. Cloud workspaces are
+    // subdomains of one registrable domain, so tenant-to-tenant counts as
+    // same-site, as would any sibling subdomain an attacker got hold of. No
+    // legitimate flow needs it — the marketplace is a different registrable
+    // domain (cross-site) and in-app links are same-origin — so it is held to the
+    // same referrer check as cross-site rather than waved through.
+    if (site !== "cross-site" && site !== "same-site") return false;
+
+    // These navigations carry no Origin, so the referring page is the only signal
+    // for who sent the user here.
     const referer = request.headers.get("referer");
     if (!referer) return false;
     try {

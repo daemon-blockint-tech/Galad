@@ -62,13 +62,23 @@ export function isAllowedEntryUrl(entry: string): boolean {
         return false;
     }
 
+    const isBundlePath = ALLOWED_ENTRY_PATH_PREFIXES.some(
+        (prefix) => resolved.pathname.startsWith(prefix),
+    );
+
     // Resolved back onto the sentinel: a genuinely same-origin path. Allowed only
     // under a static bundle directory — see ALLOWED_ENTRY_PATH_PREFIXES.
-    if (resolved.origin === new URL(RESOLUTION_BASE).origin) {
-        return ALLOWED_ENTRY_PATH_PREFIXES.some((prefix) => resolved.pathname.startsWith(prefix));
-    }
+    if (resolved.origin === new URL(RESOLUTION_BASE).origin) return isBundlePath;
 
-    if (resolved.protocol === "http:" && LOCAL_ENTRY_HOSTS.includes(resolved.hostname)) return true;
+    if (resolved.protocol === "http:" && LOCAL_ENTRY_HOSTS.includes(resolved.hostname)) {
+        // The plugin CLI serves an unpacked bundle from its own dev server on some
+        // other localhost port, and those paths are arbitrary — so this stays open
+        // in development. In production a localhost entry resolves to the viewer's
+        // own machine, which for a self-hosted install is this app: without the
+        // path check, "http://localhost:3000/api/camera/proxy/iframe?url=..." would
+        // walk straight around the restriction above.
+        return process.env.NODE_ENV !== "production" || isBundlePath;
+    }
     if (resolved.protocol !== "https:") return false;
 
     // Credentials in the authority are never legitimate here and read as an

@@ -7,14 +7,29 @@ import { loginAction } from "@/app/login/actions";
 import styles from "@/app/setup/setup.module.css";
 import { AuthSplitLayout } from "@/components/auth/AuthSplitLayout";
 
+/**
+ * Where to land after a successful login.
+ *
+ * Resolved against the current origin rather than string-matched: "//evil.com/x"
+ * starts with "/" but is not a path, and would have been an open redirect.
+ *
+ * API routes are refused outright. `/api/marketplace/install-redirect` writes a
+ * plugin manifest on a GET and trusts a same-origin navigation, so letting
+ * callbackUrl aim there turned this page into the delivery vehicle for it: send
+ * a logged-out admin here with a crafted callbackUrl and their own login
+ * performs the install. A logged-out install therefore lands on /ops and has to
+ * be started again from the marketplace, now signed in.
+ */
 function getSafeRedirect(url: string | null): string {
     if (!url) return "/ops";
-    if (url.startsWith("/")) return url;
     try {
-        const parsed = new URL(url);
-        if (parsed.origin === window.location.origin) return url;
-    } catch { /* invalid */ }
-    return "/ops";
+        const resolved = new URL(url, window.location.origin);
+        if (resolved.origin !== window.location.origin) return "/ops";
+        if (resolved.pathname.startsWith("/api")) return "/ops";
+        return `${resolved.pathname}${resolved.search}${resolved.hash}`;
+    } catch {
+        return "/ops";
+    }
 }
 
 function LoginForm() {
@@ -34,12 +49,8 @@ function LoginForm() {
 
         if (result.success) {
             const target = getSafeRedirect(callbackUrl);
-            if (target.startsWith("/api")) {
-                window.location.href = target;
-            } else {
-                router.push(target);
-                router.refresh();
-            }
+            router.push(target);
+            router.refresh();
         } else {
             setError(result.error ?? "Login failed.");
             setLoading(false);

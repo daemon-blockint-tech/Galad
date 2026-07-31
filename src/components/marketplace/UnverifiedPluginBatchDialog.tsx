@@ -10,14 +10,26 @@ interface Props {
   onDenyAll: () => void;
 }
 
+/** Where a bundle actually loads from, shown next to the name so consent is informed. */
+function describeEntry(entry: string | undefined): string {
+  if (!entry) return "unknown source";
+  try {
+    const url = new URL(entry, "https://app.invalid/");
+    return url.origin === "https://app.invalid" ? url.pathname : `${url.host}${url.pathname}`;
+  } catch {
+    return entry;
+  }
+}
+
 export default function UnverifiedPluginBatchDialog({
   manifests,
   onApproveSelected,
   onDenyAll,
 }: Props) {
-  const [selected, setSelected] = useState<Set<string>>(
-    () => new Set(manifests.map((m) => m.id)),
-  );
+  // Nothing is pre-ticked: approving is what allows a bundle to run, so it has to
+  // be a deliberate choice per plugin. Defaulting to all meant a plugin that
+  // arrived alongside a recognised one was approved by the same click.
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(false);
 
   function toggle(id: string) {
@@ -67,6 +79,13 @@ export default function UnverifiedPluginBatchDialog({
               />
               <span className={styles.pluginName}>
                 {m.name ?? m.id}
+                {/* Approval is recorded against (id, version, entry), so the
+                    version and the code's origin have to be visible — otherwise
+                    the user is consenting to fields they were never shown. */}
+                <span className={styles.pluginSource}>
+                  {m.version ? `v${m.version} · ` : ""}
+                  {describeEntry(m.entry)}
+                </span>
               </span>
             </li>
           ))}

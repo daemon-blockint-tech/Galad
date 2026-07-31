@@ -163,3 +163,37 @@ describe("GET /api/marketplace/install-redirect", () => {
         });
     });
 });
+
+describe("same-site is not trusted on its own", () => {
+    // Cloud workspaces are subdomains of one registrable domain, so a sibling
+    // subdomain — another tenant, or one an attacker got hold of — reads as
+    // same-site. No legitimate flow needs it, so it must still prove a referrer.
+    it("refuses a same-site navigation from an unknown sibling subdomain", async () => {
+        signedInAs("admin");
+
+        const res = await GET(
+            installRequest("aviation", manifestParam(), {
+                "sec-fetch-dest": "document",
+                "sec-fetch-site": "same-site",
+                referer: "https://evil.app.grond.dev/trap",
+            }),
+        );
+
+        expect(res.status).toBe(403);
+        expect(upsertPlugin).not.toHaveBeenCalled();
+    });
+
+    it("still allows same-origin, which is the in-app path", async () => {
+        signedInAs("admin");
+
+        const res = await GET(
+            installRequest("aviation", manifestParam(), {
+                "sec-fetch-dest": "document",
+                "sec-fetch-site": "same-origin",
+            }),
+        );
+
+        expect(res.status).not.toBe(403);
+        expect(upsertPlugin).toHaveBeenCalledTimes(1);
+    });
+});

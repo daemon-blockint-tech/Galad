@@ -22,7 +22,11 @@ const LEGACY_KEYS = [
  * the user consented to.
  */
 export function manifestFingerprint(manifest: Pick<PluginManifest, "id" | "version" | "entry">): string {
-    return [manifest.id, manifest.version ?? "", manifest.entry ?? ""].join("\n");
+    // JSON, not a delimiter join: nothing constrains `version`, so a value
+    // containing the separator let two different (version, entry) pairs produce
+    // the same fingerprint — approve a benign entry once, then swap it for the
+    // attacker's and reuse the approval. JSON encoding is injective.
+    return JSON.stringify([manifest.id, manifest.version ?? "", manifest.entry ?? ""]);
 }
 
 /** Fingerprints of the manifests this browser has approved, keyed by plugin id. */

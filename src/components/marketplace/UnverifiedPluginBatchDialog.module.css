@@ -85,6 +85,17 @@
   font-size: 0.9rem;
   color: #e0e0e0;
   font-weight: 500;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.pluginSource {
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: #8a8a8a;
+  overflow-wrap: anywhere;
 }
 
 .risk {
