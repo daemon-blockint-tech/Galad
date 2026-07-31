@@ -103,3 +103,25 @@ describe("isPlatformAdmin (who may reach /admin)", () => {
         expect(isPlatformAdmin({})).toBe(false);
     });
 });
+
+describe("public env reaches the client bundle", () => {
+    // Next only substitutes `process.env.NEXT_PUBLIC_X` written literally. Reading
+    // it through a computed key left it undefined in the browser, so every edition
+    // flag silently fell back to its default and a demo build rendered as local.
+    it("reads the edition through a statically-inlined map", async () => {
+        const source = await import("node:fs").then((fs) =>
+            fs.readFileSync("src/core/grondEnv.ts", "utf8"),
+        );
+
+        expect(source).toContain("NEXT_PUBLIC_MAVEN_EDITION: process.env.NEXT_PUBLIC_MAVEN_EDITION");
+
+        // readPublicEnv must go through that map. readServerEnv may keep using a
+        // computed key — server code has a real process.env.
+        const publicReader = source.slice(
+            source.indexOf("function readPublicEnv"),
+            source.indexOf("function readServerEnv"),
+        );
+        expect(publicReader).toContain("PUBLIC_ENV[");
+        expect(publicReader).not.toMatch(/process\.env\[/);
+    });
+});

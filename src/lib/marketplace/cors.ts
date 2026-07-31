@@ -43,7 +43,10 @@ export function allowedMarketplaceOrigins(): Set<string> {
     const configured = getMarketplaceUrl();
     const origins = [
         originOf(configured ?? DEFAULT_MARKETPLACE_ORIGIN) ?? DEFAULT_MARKETPLACE_ORIGIN,
-        LEGACY_MARKETPLACE_ORIGIN,
+        // Only while no marketplace is configured. An operator who named their own
+        // should not also be trusting the pre-rebrand host they never mentioned;
+        // if they still need it, MARKETPLACE_ALLOWED_ORIGINS says so explicitly.
+        ...(configured ? [] : [LEGACY_MARKETPLACE_ORIGIN]),
         ...(process.env.MARKETPLACE_ALLOWED_ORIGINS ?? "")
             .split(",")
             .map((entry) => originOf(entry.trim()))
