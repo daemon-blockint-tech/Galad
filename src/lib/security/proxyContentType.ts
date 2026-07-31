@@ -15,8 +15,15 @@ const BLOCKED_PROXY_TYPES = [
     "image/svg+xml", // scriptable document
 ];
 
+/**
+ * The two JavaScript MIME essences from the HTML spec that the substring rule
+ * above does not catch — neither contains "javascript" or "ecmascript".
+ */
+const BLOCKED_PROXY_TYPES_EXACT = ["text/jscript", "text/livescript"];
+
 /** True when this upstream content type must not be relayed from our origin. */
 export function isUnsafeProxyContentType(contentType: string): boolean {
     const essence = contentType.split(";")[0].trim().toLowerCase();
+    if (BLOCKED_PROXY_TYPES_EXACT.includes(essence)) return true;
     return BLOCKED_PROXY_TYPES.some((blocked) => essence.includes(blocked));
 }

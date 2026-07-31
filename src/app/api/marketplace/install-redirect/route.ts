@@ -9,6 +9,7 @@ import { installLimiter } from "@/lib/rateLimiters";
 import { getClientIp } from "@/lib/rateLimit";
 import { isPluginInstallEnabled } from "@/core/edition";
 import { validateMarketplaceAuth } from "@/lib/marketplace/auth";
+import { isTrustedInstallNavigation } from "@/lib/marketplace/navigationOrigin";
 import { getRequestOrigin } from "@/lib/origin";
 import { getTenantId } from "@/lib/tenant";
 
@@ -50,6 +51,15 @@ export async function GET(request: NextRequest) {
 
         const rateLimited = installLimiter.check(getClientIp(request));
         if (rateLimited) return rateLimited;
+
+        // This GET writes, and the session cookie is SameSite=Lax, so without this
+        // any page the victim visits could install a plugin as them.
+        if (!isTrustedInstallNavigation(request)) {
+            return NextResponse.json(
+                { error: "Install must be started from the marketplace or from within the app" },
+                { status: 403 },
+            );
+        }
 
         const session = await auth();
 

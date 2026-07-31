@@ -7,7 +7,8 @@ import { pluginManager } from "@/core/plugins/PluginManager";
 import { useStore } from "@/core/state/store";
 import type { PluginManifest } from "@/core/plugins/PluginManifest";
 import {
-  getApprovedUnverifiedIds,
+  getApprovedUnverifiedManifests,
+  isManifestApproved,
   approveUnverifiedPlugin,
 } from "@/lib/marketplace/trustedPlugins";
 import { isDemo } from "@/core/edition";
@@ -115,7 +116,7 @@ export function useMarketplaceSync(hostReady: boolean) {
             }
 
             const { manifests } = json as { manifests: PluginManifest[] };
-            const approved = getApprovedUnverifiedIds();
+            const approved = getApprovedUnverifiedManifests();
             const newPending: PluginManifest[] = [];
 
             for (const manifest of manifests) {
@@ -124,7 +125,7 @@ export function useMarketplaceSync(hostReady: boolean) {
 
                 // Unverified + not yet approved → collect for batch review
                 // On demo, skip the gate — admin already approved by installing
-                if (!isDemo && manifest.trust === "unverified" && !approved.has(manifest.id)) {
+                if (!isDemo && manifest.trust === "unverified" && !isManifestApproved(manifest, approved)) {
                     newPending.push(manifest);
                     continue;
                 }
@@ -155,7 +156,7 @@ export function useMarketplaceSync(hostReady: boolean) {
 
         for (const manifest of pendingUnverified) {
             if (idSet.has(manifest.id)) {
-                approveUnverifiedPlugin(manifest.id);
+                approveUnverifiedPlugin(manifest);
                 toLoad.push(manifest);
             }
         }

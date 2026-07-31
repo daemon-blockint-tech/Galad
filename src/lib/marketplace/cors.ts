@@ -3,8 +3,16 @@ import { NextResponse } from "next/server";
 import { getMarketplaceUrl } from "@/core/grondEnv";
 import { isPrivateIP } from "@/lib/security/ssrf";
 
-/** Default marketplace, used when no marketplace URL is configured. */
-const DEFAULT_MARKETPLACE_ORIGIN = "https://marketplace.worldwideview.dev";
+/**
+ * Default marketplace when none is configured. Must stay in step with the
+ * registry host in registryClient.ts and the manifest host the install and
+ * check-updates routes fetch from — those decide what is "verified", so a
+ * different default here meant trusting one brand and fetching from another.
+ */
+const DEFAULT_MARKETPLACE_ORIGIN = "https://marketplace.maven-system.dev";
+
+/** Pre-rebrand marketplace, still accepted while deployments migrate. */
+const LEGACY_MARKETPLACE_ORIGIN = "https://marketplace.worldwideview.dev";
 
 function originOf(url: string): string | null {
     try {
@@ -35,6 +43,7 @@ export function allowedMarketplaceOrigins(): Set<string> {
     const configured = getMarketplaceUrl();
     const origins = [
         originOf(configured ?? DEFAULT_MARKETPLACE_ORIGIN) ?? DEFAULT_MARKETPLACE_ORIGIN,
+        LEGACY_MARKETPLACE_ORIGIN,
         ...(process.env.MARKETPLACE_ALLOWED_ORIGINS ?? "")
             .split(",")
             .map((entry) => originOf(entry.trim()))

@@ -233,6 +233,13 @@ export default async function proxy(req: NextRequest) {
         }
     }
 
+    // Cloud workspaces are provisioned, so createAdminAccount refuses there. Serving
+    // the form anyway would present a sign-up that can only ever fail — and it is
+    // the page an anonymous visitor would reach on a workspace with no users yet.
+    if (isCloudDeploy && path.startsWith("/setup")) {
+        return NextResponse.redirect(new URL("/login", req.nextUrl));
+    }
+
     if (path.startsWith("/setup") || path.startsWith("/login")) {
         return continueWithTenant(req, tenantSubdomain);
     }

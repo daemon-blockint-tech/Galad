@@ -39,14 +39,18 @@ function manifestParam(overrides: Record<string, unknown> = {}) {
     return Buffer.from(JSON.stringify(manifest)).toString("base64");
 }
 
-function installRequest(pluginId: string, manifest: string) {
+function installRequest(
+    pluginId: string,
+    manifest: string,
+    headers: Record<string, string> = { "sec-fetch-dest": "document", "sec-fetch-site": "same-origin" },
+) {
     const url = new URL("https://app.local/api/marketplace/install-redirect");
     url.searchParams.set("pluginId", pluginId);
     url.searchParams.set("manifest", manifest);
     url.searchParams.set("version", "9.9.9");
     url.searchParams.set("redirectTo", REDIRECT_TO);
     // The route reads request.nextUrl; a NextRequest-shaped stand-in is enough.
-    return Object.assign(new Request(url), { nextUrl: url }) as never;
+    return Object.assign(new Request(url, { headers }), { nextUrl: url }) as never;
 }
 
 function signedInAs(role: string) {
@@ -100,5 +104,62 @@ describe("GET /api/marketplace/install-redirect", () => {
 
         expect(res.status).toBe(400);
         expect(upsertPlugin).not.toHaveBeenCalled();
+    });
+
+    describe("cross-site request forgery", () => {
+        // The handler writes on a GET and the session cookie is SameSite=Lax, so
+        // without a navigation check any page the victim opens could install as them.
+        it("refuses a subresource load such as an <img> tag", async () => {
+            signedInAs("admin");
+
+            const res = await GET(
+                installRequest("aviation", manifestParam(), {
+                    "sec-fetch-dest": "image",
+                    "sec-fetch-site": "cross-site",
+                }),
+            );
+
+            expect(res.status).toBe(403);
+            expect(upsertPlugin).not.toHaveBeenCalled();
+        });
+
+        it("refuses a cross-site navigation from an unknown page", async () => {
+            signedInAs("admin");
+
+            const res = await GET(
+                installRequest("aviation", manifestParam(), {
+                    "sec-fetch-dest": "document",
+                    "sec-fetch-site": "cross-site",
+                    referer: "https://evil.example/trap",
+                }),
+            );
+
+            expect(res.status).toBe(403);
+            expect(upsertPlugin).not.toHaveBeenCalled();
+        });
+
+        it("allows the real flow: a navigation referred by the marketplace", async () => {
+            signedInAs("admin");
+
+            const res = await GET(
+                installRequest("aviation", manifestParam(), {
+                    "sec-fetch-dest": "document",
+                    "sec-fetch-site": "cross-site",
+                    referer: "https://marketplace.maven-system.dev/plugins/aviation",
+                }),
+            );
+
+            expect(res.status).not.toBe(403);
+            expect(upsertPlugin).toHaveBeenCalledTimes(1);
+        });
+
+        it("fails closed when the Sec-Fetch headers are absent", async () => {
+            signedInAs("admin");
+
+            const res = await GET(installRequest("aviation", manifestParam(), {}));
+
+            expect(res.status).toBe(403);
+            expect(upsertPlugin).not.toHaveBeenCalled();
+        });
     });
 });

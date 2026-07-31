@@ -18,6 +18,9 @@ describe("isUnsafeProxyContentType", () => {
         "application/json",
         "application/wasm",
         "image/svg+xml",
+        "text/jscript",
+        "text/livescript",
+        "TEXT/JSCRIPT; charset=utf-8",
     ])("refuses %s", (contentType) => {
         expect(isUnsafeProxyContentType(contentType)).toBe(true);
     });
