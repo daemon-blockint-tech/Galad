@@ -4,6 +4,7 @@ import { isAuthEnabled } from "@/core/edition";
 import { cameraProxyLimiter } from "@/lib/rateLimiters";
 import { getClientIp } from "@/lib/rateLimit";
 import { safeFetch } from "@/lib/security/ssrf";
+import { isUnsafeProxyContentType } from "@/lib/security/proxyContentType";
 
 const MAX_IFRAME_DURATION_MS = 10 * 1000; // 10 seconds timeout for HTML
 const MAX_IFRAME_BYTES = 5 * 1024 * 1024;
@@ -57,6 +58,13 @@ export async function GET(req: NextRequest) {
         }
 
         const contentType = upstream.headers.get("content-type") || "text/html";
+
+        if (isUnsafeProxyContentType(contentType)) {
+            return NextResponse.json(
+                { error: `Refusing to proxy content type ${contentType}` },
+                { status: 415 },
+            );
+        }
 
         // If it's not HTML, just proxy the stream directly (fallback)
         if (!contentType.includes("text/html")) {

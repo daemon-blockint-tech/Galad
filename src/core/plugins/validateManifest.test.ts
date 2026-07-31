@@ -58,11 +58,18 @@ entry: "/p.js"
 });
 
 describe("entry URL allowlist", () => {
-    it("accepts bare relative forms that resolve same-origin", () => {
-        // These look like hostnames but the URL parser resolves them against the
-        // page, so the browser fetches them from this app's own origin.
-        for (const entry of ["evil.com/x.js", "https:evil.com/x.js", "https:/evil.com/x.js"]) {
-            expect(isAllowedEntryUrl(entry)).toBe(true);
+    it("rejects a same-origin path outside the static bundle directories", () => {
+        // Same-origin is not sufficient: /api/camera/proxy/* streams a remote body
+        // back under the caller's chosen content type, so importing through it
+        // would run attacker code on this origin.
+        for (const entry of [
+            "/api/camera/proxy/iframe?url=https://evil.com/pwn.js",
+            "/api/camera/proxy/stream?url=https://evil.com/pwn.js",
+            "/plugins/../api/camera/proxy/iframe?url=https://evil.com/pwn.js",
+            "evil.com/x.js",
+            "/some/other/path.mjs",
+        ]) {
+            expect(isAllowedEntryUrl(entry)).toBe(false);
         }
     });
 
@@ -95,7 +102,8 @@ describe("entry URL allowlist", () => {
 
     it.each([
         "/plugins/aviation.mjs",
-        "./local.mjs",
+        "/plugins-local/demo/frontend.mjs",
+        "/e2e-fixtures/mock-plugin.js",
         "https://cdn.jsdelivr.net/npm/pkg/dist/frontend.mjs",
         "https://unpkg.com/pkg@1.0.0/dist/frontend.mjs",
         "https://plugins.grond.dev/aviation.mjs",

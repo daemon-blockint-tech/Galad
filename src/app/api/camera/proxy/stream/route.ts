@@ -4,6 +4,7 @@ import { isAuthEnabled } from "@/core/edition";
 import { cameraProxyLimiter } from "@/lib/rateLimiters";
 import { getClientIp } from "@/lib/rateLimit";
 import { safeFetch } from "@/lib/security/ssrf";
+import { isUnsafeProxyContentType } from "@/lib/security/proxyContentType";
 
 const MAX_STREAM_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -49,6 +50,13 @@ export async function GET(req: NextRequest) {
         }
 
         const contentType = upstream.headers.get("content-type") || "application/octet-stream";
+
+        if (isUnsafeProxyContentType(contentType)) {
+            return NextResponse.json(
+                { error: `Refusing to proxy content type ${contentType}` },
+                { status: 415 },
+            );
+        }
 
         return new Response(upstream.body as ReadableStream, {
             status: 200,

